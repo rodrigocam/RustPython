@@ -1,8 +1,72 @@
+use super::os;
 use crate::function::OptionalOption;
-use crate::pyobject::{PyObjectRef, PyResult};
+use crate::obj::objint::PyInt;
+use crate::pyobject::{PyObjectRef, PyResult, TryFromObject};
 use crate::vm::VirtualMachine;
 
-#[cfg(unix)]
+type RawFd = i64;
+
+struct Selectable {
+    fno: RawFd,
+}
+
+impl TryFromObject for Selectable {
+    fn try_from_object(vm: &VirtualMachine, obj: PyObjectRef) -> PyResult<Self> {
+        let fno = RawFd::try_from_object(vm, obj.clone()).or_else(|_| {
+            let meth = vm.get_method_or_type_error(obj, "fileno", || {
+                "select arg must be an int or object with a fileno() method".to_string()
+            })?;
+            RawFd::try_from_object(vm, vm.invoke(&meth, vec![])?)
+        })?;
+        Selectable { fno }
+    }
+}
+
+#[repr(C)]
+pub struct FdSet(libc::fd_set);
+
+impl FdSet {
+    pub fn new() -> FdSet {
+        let mut fdset = unsafe { mem::uninitialized() };
+        unsafe { libc::FD_ZERO(&mut fdset) };
+        FdSet(fdset)
+    }
+
+    pub fn insert(&mut self, fd: RawFd) {
+        unsafe { libc::FD_SET(fd, &mut self.0) };
+    }
+
+    pub fn remove(&mut self, fd: RawFd) {
+        unsafe { libc::FD_CLR(fd, &mut self.0) };
+    }
+
+    pub fn contains(&mut self, fd: RawFd) -> bool {
+        unsafe { libc::FD_ISSET(fd, &mut self.0) }
+    }
+
+    pub fn clear(&mut self) {
+        unsafe { libc::FD_ZERO(&mut self.0) };
+    }
+
+    pub fn highest(&mut self) -> Option<RawFd> {
+        for i in (0..FD_SETSIZE).rev() {
+            let i = i as RawFd;
+            if unsafe { libc::FD_ISSET(i, self as *mut _ as *mut libc::fd_set) } {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+}
+
+fn sec_to_timeval(sec: f64) -> libc::timeval {
+    libc::timeval {
+        tv_sec: sec.trunc() as _,
+        tv_usec: (sec.fract() * 1e6) as _,
+    }
+}
+
 fn select_select(
     rlist: PyObjectRef,
     wlist: PyObjectRef,
@@ -14,9 +78,9 @@ fn select_select(
     use nix::sys::time::{TimeVal, TimeValLike};
     use std::os::unix::io::RawFd;
 
-    let seq2set = |list| -> PyResult<(Vec<RawFd>, select::FdSet)> {
-        let v = vm.extract_elements(list)?;
-        let mut fds = select::FdSet::new();
+    let seq2set = |list| -> PyResult<(Vec<i32>, FdSet)> {
+        let v = vm.extract_elements::<Selectable>(list)?;
+        let mut fds = FdSet::new();
         for fd in &v {
             fds.insert(*fd);
         }
@@ -27,20 +91,23 @@ fn select_select(
     let (wlist, mut w) = seq2set(&wlist)?;
     let (xlist, mut x) = seq2set(&xlist)?;
 
-    let mut timeout = timeout
-        .flat_option()
-        .map(|to| TimeVal::nanoseconds((to * 1e9) as i64));
+    let nfds = [&mut r, &mut w, &mut x]
+        .iter_mut()
+        .filter_map(|set| set.highest())
+        .max()
+        .unwrap_or(-1)
+        + 1;
 
-    select::select(
-        None,
-        Some(&mut r),
-        Some(&mut w),
-        Some(&mut x),
-        timeout.as_mut(),
-    )
-    .map_err(|err| super::os::convert_nix_error(vm, err))?;
+    let mut timeout = timeout.flat_option().map(sec_to_timeval);
+    let timeout = match timeout {
+        Some(ref mut tv) => tv as *mut _,
+        None => std::ptr::null_mut(),
+    };
 
-    let set2list = |list: Vec<RawFd>, mut set: select::FdSet| -> PyObjectRef {
+    unsafe { libc::select(nfds, &mut r, &mut w, &mut x, timeout) };
+    // .map_err(|err| super::os::convert_nix_error(vm, err))?;
+
+    let set2list = |list: Vec<RawFd>, mut set: FdSet| -> PyObjectRef {
         vm.ctx.new_list(
             list.into_iter()
                 .filter(|fd| set.contains(*fd))
@@ -54,18 +121,6 @@ fn select_select(
     let xlist = set2list(xlist, x);
 
     Ok(vm.ctx.new_tuple(vec![rlist, wlist, xlist]))
-}
-
-#[cfg(not(unix))]
-fn select_select(
-    _rlist: PyObjectRef,
-    _wlist: PyObjectRef,
-    _xlist: PyObjectRef,
-    _timeout: OptionalOption<f64>,
-    _vm: &VirtualMachine,
-) {
-    // TODO: select.select on windows
-    unimplemented!("select.select")
 }
 
 pub fn make_module(vm: &VirtualMachine) -> PyObjectRef {
