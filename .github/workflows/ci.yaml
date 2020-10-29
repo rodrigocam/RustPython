@@ -1,7 +1,7 @@
 on:
   push:
     branches: [master, release]
-  pull_request:  
+  pull_request:
 
 name: CI
 
@@ -16,7 +16,6 @@ env:
     -p rustpython-jit
     -p rustpython-derive
     -p rustpython
-  RUSTPYTHON_NO_IPV6: 1
 
 jobs:
   rust_tests:
@@ -66,6 +65,9 @@ jobs:
     steps:
       - uses: actions/checkout@master
       - uses: actions-rs/toolchain@v1
+      - uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
       - name: Set up the Windows environment
         run: |
           choco install llvm
@@ -95,7 +97,7 @@ jobs:
           python -V
           python -m pip install --upgrade pip
           python -m pip install pipenv
-      - run: pipenv install
+      - run: pipenv install --python 3.8
         working-directory: ./extra_tests
       - name: run snippets
         run: pipenv run pytest -v

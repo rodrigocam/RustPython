@@ -2,7 +2,7 @@
 # Python test set -- math module
 # XXXX Should not do tests around zero only
 
-from test.support import run_unittest, verbose#, requires_IEEE_754 # TODO: RUSTPYTHON, commented due to import error
+from test.support import run_unittest, verbose, requires_IEEE_754
 from test import support
 import unittest
 import itertools
@@ -260,7 +260,8 @@ class MathTests(unittest.TestCase):
         self.assertRaises(ValueError, math.acos, -1 - eps)
         self.assertTrue(math.isnan(math.acos(NAN)))
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testAcosh(self):
         self.assertRaises(TypeError, math.acosh)
         self.ftest('acosh(1)', math.acosh(1), 0)
@@ -300,7 +301,7 @@ class MathTests(unittest.TestCase):
         self.ftest('atan(-inf)', math.atan(NINF), -math.pi/2)
         self.assertTrue(math.isnan(math.atan(NAN)))
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    @unittest.expectedFailure # TODO: RUSTPYTHON
     def testAtanh(self):
         self.assertRaises(TypeError, math.atan)
         self.ftest('atanh(0)', math.atanh(0), 0)
@@ -373,7 +374,8 @@ class MathTests(unittest.TestCase):
         self.assertTrue(math.isnan(math.atan2(NAN, INF)))
         self.assertTrue(math.isnan(math.atan2(NAN, NAN)))
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testCeil(self):
         self.assertRaises(TypeError, math.ceil)
         self.assertEqual(int, type(math.ceil(0.5)))
@@ -442,7 +444,6 @@ class MathTests(unittest.TestCase):
         # similarly, copysign(2., NAN) could be 2. or -2.
         self.assertEqual(abs(math.copysign(2., NAN)), 2.)
 
-    @unittest.skip('TODO: RUSTPYTHON')
     def testCos(self):
         self.assertRaises(TypeError, math.cos)
         self.ftest('cos(-pi/2)', math.cos(-math.pi/2), 0, abs_tol=math.ulp(1))
@@ -474,7 +475,8 @@ class MathTests(unittest.TestCase):
         self.ftest('degrees(-pi/4)', math.degrees(-math.pi/4), -45.0)
         self.ftest('degrees(0)', math.degrees(0), 0)
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testExp(self):
         self.assertRaises(TypeError, math.exp)
         self.ftest('exp(-1)', math.exp(-1), 1/math.e)
@@ -501,7 +503,8 @@ class MathTests(unittest.TestCase):
         self.assertRaises(ValueError, math.factorial, -1)
         self.assertRaises(ValueError, math.factorial, -10**100)
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testFactorialNonIntegers(self):
         with self.assertWarns(DeprecationWarning):
             self.assertEqual(math.factorial(5.0), 120)
@@ -524,7 +527,8 @@ class MathTests(unittest.TestCase):
         with self.assertWarns(DeprecationWarning):
             self.assertRaises(OverflowError, math.factorial, 1e100)
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testFloor(self):
         self.assertRaises(TypeError, math.floor)
         self.assertEqual(int, type(math.floor(0.5)))
@@ -738,7 +742,6 @@ class MathTests(unittest.TestCase):
         self.assertRaises(TypeError, gcd, 120, 1, 84.0)
         #self.assertEqual(gcd(MyIndexable(120), MyIndexable(84)), 12) # TODO: RUSTPYTHON
 
-    @unittest.skip('TODO: RUSTPYTHON float support')
     def testHypot(self):
         from decimal import Decimal
         from fractions import Fraction
@@ -813,7 +816,8 @@ class MathTests(unittest.TestCase):
             scale = FLOAT_MIN / 2.0 ** exp
             self.assertEqual(math.hypot(4*scale, 3*scale), 5*scale)
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testDist(self):
         from decimal import Decimal as D
         from fractions import Fraction as F
@@ -1025,7 +1029,8 @@ class MathTests(unittest.TestCase):
         self.assertRaises(TypeError, lcm, 120, 0, 84.0)
         # self.assertEqual(lcm(MyIndexable(120), MyIndexable(84)), 840) # TODO: RUSTPYTHON
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testLdexp(self):
         self.assertRaises(TypeError, math.ldexp)
         self.ftest('ldexp(0,1)', math.ldexp(0,1), 0)
@@ -1058,7 +1063,8 @@ class MathTests(unittest.TestCase):
             self.assertEqual(math.ldexp(NINF, n), NINF)
             self.assertTrue(math.isnan(math.ldexp(NAN, n)))
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testLog(self):
         self.assertRaises(TypeError, math.log)
         self.ftest('log(1/e)', math.log(1/math.e), -1)
@@ -1075,7 +1081,8 @@ class MathTests(unittest.TestCase):
         self.assertEqual(math.log(INF), INF)
         self.assertTrue(math.isnan(math.log(NAN)))
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testLog1p(self):
         self.assertRaises(TypeError, math.log1p)
         for n in [2, 2**90, 2**300]:
@@ -1143,7 +1150,8 @@ class MathTests(unittest.TestCase):
         self.assertTrue(math.isnan(modf_nan[0]))
         self.assertTrue(math.isnan(modf_nan[1]))
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testPow(self):
         self.assertRaises(TypeError, math.pow)
         self.ftest('pow(0,1)', math.pow(0,1), 0)
@@ -1475,7 +1483,6 @@ class MathTests(unittest.TestCase):
             self.assertRaises(ValueError, math.tan, NINF)
         self.assertTrue(math.isnan(math.tan(NAN)))
 
-    @unittest.skip('TODO: RUSTPYTHON')
     def testTanh(self):
         self.assertRaises(TypeError, math.tanh)
         self.ftest('tanh(0)', math.tanh(0), 0)
@@ -1566,7 +1573,8 @@ class MathTests(unittest.TestCase):
     # still fails this part of the test on some platforms.  For now, we only
     # *run* test_exceptions() in verbose mode, so that this isn't normally
     # tested.
-    @unittest.skip('TODO: RUSTPYTHON')
+        # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     @unittest.skipUnless(verbose, 'requires verbose mode')
     def test_exceptions(self):
         try:
@@ -1725,7 +1733,8 @@ class MathTests(unittest.TestCase):
     #         self.fail('Failures in test_mtestfile:\n  ' +
     #                   '\n  '.join(failures))
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def test_prod(self):
         prod = math.prod
         self.assertEqual(prod([]), 1)
@@ -1812,7 +1821,8 @@ class MathTests(unittest.TestCase):
         self.assertEqual(type(prod([1, decimal.Decimal(2.0), 3, 4, 5, 6])),
                          decimal.Decimal)
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testPerm(self):
         perm = math.perm
         factorial = math.factorial
@@ -1877,7 +1887,8 @@ class MathTests(unittest.TestCase):
             self.assertIs(type(perm(IntSubclass(5), IntSubclass(k))), int)
             self.assertIs(type(perm(MyIndexable(5), MyIndexable(k))), int)
 
-    @unittest.skip('TODO: RUSTPYTHON')
+    # TODO: RUSTPYTHON
+    @unittest.expectedFailure
     def testComb(self):
         comb = math.comb
         factorial = math.factorial
@@ -1948,77 +1959,75 @@ class MathTests(unittest.TestCase):
             self.assertIs(type(comb(IntSubclass(5), IntSubclass(k))), int)
             self.assertIs(type(comb(MyIndexable(5), MyIndexable(k))), int)
 
-    # TODO: RUSTPYTHON
-    # @requires_IEEE_754
-    # def test_nextafter(self):
-    #     # around 2^52 and 2^63
-    #     self.assertEqual(math.nextafter(4503599627370496.0, -INF),
-    #                      4503599627370495.5)
-    #     self.assertEqual(math.nextafter(4503599627370496.0, INF),
-    #                      4503599627370497.0)
-    #     self.assertEqual(math.nextafter(9223372036854775808.0, 0.0),
-    #                      9223372036854774784.0)
-    #     self.assertEqual(math.nextafter(-9223372036854775808.0, 0.0),
-    #                      -9223372036854774784.0)
+    @requires_IEEE_754
+    def test_nextafter(self):
+        # around 2^52 and 2^63
+        self.assertEqual(math.nextafter(4503599627370496.0, -INF),
+                         4503599627370495.5)
+        self.assertEqual(math.nextafter(4503599627370496.0, INF),
+                         4503599627370497.0)
+        self.assertEqual(math.nextafter(9223372036854775808.0, 0.0),
+                         9223372036854774784.0)
+        self.assertEqual(math.nextafter(-9223372036854775808.0, 0.0),
+                         -9223372036854774784.0)
 
-    #     # around 1.0
-    #     self.assertEqual(math.nextafter(1.0, -INF),
-    #                      float.fromhex('0x1.fffffffffffffp-1'))
-    #     self.assertEqual(math.nextafter(1.0, INF),
-    #                      float.fromhex('0x1.0000000000001p+0'))
+        # around 1.0
+        self.assertEqual(math.nextafter(1.0, -INF),
+                         float.fromhex('0x1.fffffffffffffp-1'))
+        self.assertEqual(math.nextafter(1.0, INF),
+                         float.fromhex('0x1.0000000000001p+0'))
 
-    #     # x == y: y is returned
-    #     self.assertEqual(math.nextafter(2.0, 2.0), 2.0)
-    #     self.assertEqualSign(math.nextafter(-0.0, +0.0), +0.0)
-    #     self.assertEqualSign(math.nextafter(+0.0, -0.0), -0.0)
+        # x == y: y is returned
+        self.assertEqual(math.nextafter(2.0, 2.0), 2.0)
+        self.assertEqualSign(math.nextafter(-0.0, +0.0), +0.0)
+        self.assertEqualSign(math.nextafter(+0.0, -0.0), -0.0)
 
-    #     # around 0.0
-    #     smallest_subnormal = sys.float_info.min * sys.float_info.epsilon
-    #     self.assertEqual(math.nextafter(+0.0, INF), smallest_subnormal)
-    #     self.assertEqual(math.nextafter(-0.0, INF), smallest_subnormal)
-    #     self.assertEqual(math.nextafter(+0.0, -INF), -smallest_subnormal)
-    #     self.assertEqual(math.nextafter(-0.0, -INF), -smallest_subnormal)
-    #     self.assertEqualSign(math.nextafter(smallest_subnormal, +0.0), +0.0)
-    #     self.assertEqualSign(math.nextafter(-smallest_subnormal, +0.0), -0.0)
-    #     self.assertEqualSign(math.nextafter(smallest_subnormal, -0.0), +0.0)
-    #     self.assertEqualSign(math.nextafter(-smallest_subnormal, -0.0), -0.0)
+        # around 0.0
+        smallest_subnormal = sys.float_info.min * sys.float_info.epsilon
+        self.assertEqual(math.nextafter(+0.0, INF), smallest_subnormal)
+        self.assertEqual(math.nextafter(-0.0, INF), smallest_subnormal)
+        self.assertEqual(math.nextafter(+0.0, -INF), -smallest_subnormal)
+        self.assertEqual(math.nextafter(-0.0, -INF), -smallest_subnormal)
+        self.assertEqualSign(math.nextafter(smallest_subnormal, +0.0), +0.0)
+        self.assertEqualSign(math.nextafter(-smallest_subnormal, +0.0), -0.0)
+        self.assertEqualSign(math.nextafter(smallest_subnormal, -0.0), +0.0)
+        self.assertEqualSign(math.nextafter(-smallest_subnormal, -0.0), -0.0)
 
-    #     # around infinity
-    #     largest_normal = sys.float_info.max
-    #     self.assertEqual(math.nextafter(INF, 0.0), largest_normal)
-    #     self.assertEqual(math.nextafter(-INF, 0.0), -largest_normal)
-    #     self.assertEqual(math.nextafter(largest_normal, INF), INF)
-    #     self.assertEqual(math.nextafter(-largest_normal, -INF), -INF)
+        # around infinity
+        largest_normal = sys.float_info.max
+        self.assertEqual(math.nextafter(INF, 0.0), largest_normal)
+        self.assertEqual(math.nextafter(-INF, 0.0), -largest_normal)
+        self.assertEqual(math.nextafter(largest_normal, INF), INF)
+        self.assertEqual(math.nextafter(-largest_normal, -INF), -INF)
 
-    #     # NaN
-    #     self.assertIsNaN(math.nextafter(NAN, 1.0))
-    #     self.assertIsNaN(math.nextafter(1.0, NAN))
-    #     self.assertIsNaN(math.nextafter(NAN, NAN))
+        # NaN
+        self.assertIsNaN(math.nextafter(NAN, 1.0))
+        self.assertIsNaN(math.nextafter(1.0, NAN))
+        self.assertIsNaN(math.nextafter(NAN, NAN))
 
-    # @requires_IEEE_754
-    # def test_ulp(self):
-    #     self.assertEqual(math.ulp(1.0), sys.float_info.epsilon)
-    #     # use int ** int rather than float ** int to not rely on pow() accuracy
-    #     self.assertEqual(math.ulp(2 ** 52), 1.0)
-    #     self.assertEqual(math.ulp(2 ** 53), 2.0)
-    #     self.assertEqual(math.ulp(2 ** 64), 4096.0)
+    @requires_IEEE_754
+    def test_ulp(self):
+        self.assertEqual(math.ulp(1.0), sys.float_info.epsilon)
+        # use int ** int rather than float ** int to not rely on pow() accuracy
+        self.assertEqual(math.ulp(2 ** 52), 1.0)
+        self.assertEqual(math.ulp(2 ** 53), 2.0)
+        self.assertEqual(math.ulp(2 ** 64), 4096.0)
 
-    #     # min and max
-    #     self.assertEqual(math.ulp(0.0),
-    #                      sys.float_info.min * sys.float_info.epsilon)
-    #     self.assertEqual(math.ulp(FLOAT_MAX),
-    #                      FLOAT_MAX - math.nextafter(FLOAT_MAX, -INF))
+        # min and max
+        self.assertEqual(math.ulp(0.0),
+                        sys.float_info.min * sys.float_info.epsilon)
+        self.assertEqual(math.ulp(FLOAT_MAX),
+                         FLOAT_MAX - math.nextafter(FLOAT_MAX, -INF))
 
-    #     # special cases
-    #     self.assertEqual(math.ulp(INF), INF)
-    #     self.assertIsNaN(math.ulp(math.nan))
+        # special cases
+        self.assertEqual(math.ulp(INF), INF)
+        self.assertIsNaN(math.ulp(math.nan))
 
-    #     # negative number: ulp(-x) == ulp(x)
-    #     for x in (0.0, 1.0, 2 ** 52, 2 ** 64, INF):
-    #         with self.subTest(x=x):
-    #             self.assertEqual(math.ulp(-x), math.ulp(x))
+        # negative number: ulp(-x) == ulp(x)
+        for x in (0.0, 1.0, 2 ** 52, 2 ** 64, INF):
+            with self.subTest(x=x):
+                self.assertEqual(math.ulp(-x), math.ulp(x))
 
-    @unittest.skip('TODO: RUSTPYTHON')
     def test_issue39871(self):
         # A SystemError should not be raised if the first arg to atan2(),
         # copysign(), or remainder() cannot be converted to a float.
@@ -2149,7 +2158,6 @@ class IsCloseTests(unittest.TestCase):
         self.assertAllClose(integer_examples, rel_tol=1e-8)
         self.assertAllNotClose(integer_examples, rel_tol=1e-9)
 
-    @unittest.skip('TODO: RUSTPYTHON')
     def test_decimals(self):
         # test with Decimal values
         from decimal import Decimal
@@ -2161,7 +2169,6 @@ class IsCloseTests(unittest.TestCase):
         self.assertAllClose(decimal_examples, rel_tol=1e-8)
         self.assertAllNotClose(decimal_examples, rel_tol=1e-9)
 
-    @unittest.skip('TODO: RUSTPYTHON')
     def test_fractions(self):
         # test with Fraction values
         from fractions import Fraction

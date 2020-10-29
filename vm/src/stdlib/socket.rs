@@ -1,11 +1,11 @@
-use byteorder::{BigEndian, ByteOrder};
 use crossbeam_utils::atomic::AtomicCell;
 use gethostname::gethostname;
 #[cfg(all(unix, not(target_os = "redox")))]
 use nix::unistd::sethostname;
 use socket2::{Domain, Protocol, Socket, Type as SocketType};
+use std::convert::TryFrom;
 use std::io::{self, prelude::*};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, ToSocketAddrs};
+use std::net::{Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
 use crate::builtins::bytearray::PyByteArrayRef;
@@ -130,7 +130,7 @@ impl PySocket {
 
     #[pymethod]
     fn connect(&self, address: Address, vm: &VirtualMachine) -> PyResult<()> {
-        let sock_addr = get_addr(vm, address)?;
+        let sock_addr = get_addr(vm, address, Some(self.family.load()))?;
         let res = if let Some(duration) = self.sock().read_timeout().unwrap() {
             self.sock().connect_timeout(&sock_addr, duration)
         } else {
@@ -141,7 +141,7 @@ impl PySocket {
 
     #[pymethod]
     fn bind(&self, address: Address, vm: &VirtualMachine) -> PyResult<()> {
-        let sock_addr = get_addr(vm, address)?;
+        let sock_addr = get_addr(vm, address, Some(self.family.load()))?;
         self.sock()
             .bind(&sock_addr)
             .map_err(|err| convert_sock_error(vm, err))
@@ -213,7 +213,7 @@ impl PySocket {
 
     #[pymethod]
     fn sendto(&self, bytes: PyBytesLike, address: Address, vm: &VirtualMachine) -> PyResult<()> {
-        let addr = get_addr(vm, address)?;
+        let addr = get_addr(vm, address, Some(self.family.load()))?;
         bytes
             .with_ref(|b| self.sock().send_to(b, &addr))
             .map_err(|err| convert_sock_error(vm, err))?;
@@ -481,20 +481,18 @@ fn socket_sethostname(hostname: PyStrRef, vm: &VirtualMachine) -> PyResult<()> {
     sethostname(hostname.borrow_value()).map_err(|err| err.into_pyexception(vm))
 }
 
-fn socket_inet_aton(ip_string: PyStrRef, vm: &VirtualMachine) -> PyResult {
+fn socket_inet_aton(ip_string: PyStrRef, vm: &VirtualMachine) -> PyResult<Vec<u8>> {
     ip_string
         .borrow_value()
         .parse::<Ipv4Addr>()
-        .map(|ip_addr| vm.ctx.new_bytes(ip_addr.octets().to_vec()))
+        .map(|ip_addr| Vec::<u8>::from(ip_addr.octets()))
         .map_err(|_| vm.new_os_error("illegal IP address string passed to inet_aton".to_owned()))
 }
 
 fn socket_inet_ntoa(packed_ip: PyBytesRef, vm: &VirtualMachine) -> PyResult {
-    if packed_ip.len() != 4 {
-        return Err(vm.new_os_error("packed IP wrong length for inet_ntoa".to_owned()));
-    }
-    let ip_num = BigEndian::read_u32(&packed_ip);
-    Ok(vm.ctx.new_str(Ipv4Addr::from(ip_num).to_string()))
+    let packed_ip = <&[u8; 4]>::try_from(&**packed_ip)
+        .map_err(|_| vm.new_os_error("packed IP wrong length for inet_ntoa".to_owned()))?;
+    Ok(vm.ctx.new_str(Ipv4Addr::from(*packed_ip).to_string()))
 }
 
 fn socket_getservbyname(
@@ -552,8 +550,29 @@ fn socket_getaddrinfo(opts: GAIOptions, vm: &VirtualMachine) -> PyResult {
     let port = port.as_ref().map(|p| p.as_ref());
 
     let addrs = dns_lookup::getaddrinfo(host, port, Some(hints)).map_err(|err| {
-        let error_type = vm.class("_socket", "gaierror");
-        vm.new_exception_msg(error_type, io::Error::from(err).to_string())
+        let error_type = GAI_ERROR.get().unwrap().clone();
+        let code = err.error_num();
+        let strerr = {
+            #[cfg(unix)]
+            {
+                let x = unsafe { libc::gai_strerror(code) };
+                if x.is_null() {
+                    io::Error::from(err).to_string()
+                } else {
+                    unsafe { std::ffi::CStr::from_ptr(x) }
+                        .to_string_lossy()
+                        .into_owned()
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                io::Error::from(err).to_string()
+            }
+        };
+        vm.new_exception(
+            error_type,
+            vec![vm.ctx.new_int(code), vm.ctx.new_str(strerr)],
+        )
     })?;
 
     let list = addrs
@@ -602,7 +621,7 @@ fn socket_gethostbyname(name: PyStrRef, vm: &VirtualMachine) -> PyResult<String>
             Ok(lst.get(0).unwrap().to_string())
         }
         Err(_) => {
-            let error_type = vm.class("_socket", "gaierror");
+            let error_type = GAI_ERROR.get().unwrap().clone();
             Err(vm.new_exception_msg(
                 error_type,
                 "nodename nor servname provided, or not known".to_owned(),
@@ -631,31 +650,19 @@ fn socket_inet_pton(af_inet: i32, ip_string: PyStrRef, vm: &VirtualMachine) -> P
     }
 }
 
-fn socket_inet_ntop(af_inet: i32, packed_ip: PyBytesRef, vm: &VirtualMachine) -> PyResult {
+fn socket_inet_ntop(af_inet: i32, packed_ip: PyBytesRef, vm: &VirtualMachine) -> PyResult<String> {
     match af_inet {
         c::AF_INET => {
-            if packed_ip.len() != 4 {
-                return Err(
-                    vm.new_value_error("invalid length of packed IP address string".to_owned())
-                );
-            }
-            let ip_num = BigEndian::read_u32(&packed_ip);
-            Ok(vm.ctx.new_str(Ipv4Addr::from(ip_num).to_string()))
+            let packed_ip = <&[u8; 4]>::try_from(&**packed_ip).map_err(|_| {
+                vm.new_value_error("invalid length of packed IP address string".to_owned())
+            })?;
+            Ok(Ipv4Addr::from(*packed_ip).to_string())
         }
         c::AF_INET6 => {
-            if packed_ip.len() != 16 {
-                return Err(
-                    vm.new_value_error("invalid length of packed IP address string".to_owned())
-                );
-            }
-            let mut iter = packed_ip.iter();
-            let mut ip_num: u128 = *iter.next().unwrap() as u128;
-            for item in iter {
-                ip_num <<= 8;
-                ip_num |= *item as u128
-            }
-            let ipv6 = Ipv6Addr::from(ip_num);
-            Ok(vm.ctx.new_str(get_ipv6_addr_str(ipv6)))
+            let packed_ip = <&[u8; 16]>::try_from(&**packed_ip).map_err(|_| {
+                vm.new_value_error("invalid length of packed IP address string".to_owned())
+            })?;
+            Ok(get_ipv6_addr_str(Ipv6Addr::from(*packed_ip)))
         }
         _ => Err(vm.new_value_error(format!("unknown address family {}", af_inet))),
     }
@@ -678,12 +685,12 @@ fn socket_getnameinfo(
     flags: i32,
     vm: &VirtualMachine,
 ) -> PyResult<(String, String)> {
-    let addr = get_addr(vm, address)?;
+    let addr = get_addr(vm, address, None)?;
     let nameinfo = addr
         .as_std()
         .and_then(|addr| dns_lookup::getnameinfo(&addr, flags).ok());
     nameinfo.ok_or_else(|| {
-        let error_type = vm.class("_socket", "gaierror");
+        let error_type = GAI_ERROR.get().unwrap().clone();
         vm.new_exception_msg(
             error_type,
             "nodename nor servname provided, or not known".to_owned(),
@@ -691,32 +698,37 @@ fn socket_getnameinfo(
     })
 }
 
-fn get_addr(vm: &VirtualMachine, addr: impl ToSocketAddrs) -> PyResult<socket2::SockAddr> {
-    match addr.to_socket_addrs() {
-        Ok(mut sock_addrs) => {
-            if let Some(mut addr) = sock_addrs.next() {
-                if option_env!("RUSTPYTHON_NO_IPV6").is_some() {
-                    while addr.ip() == IpAddr::V6(Ipv6Addr::LOCALHOST) {
-                        if let Some(other) = sock_addrs.next() {
-                            addr = other
-                        } else {
-                            break;
-                        }
-                    }
+fn get_addr(
+    vm: &VirtualMachine,
+    addr: impl ToSocketAddrs,
+    domain: Option<i32>,
+) -> PyResult<socket2::SockAddr> {
+    let sock_addr = match addr.to_socket_addrs() {
+        Ok(mut sock_addrs) => match domain {
+            None => sock_addrs.next(),
+            Some(dom) => {
+                if dom == i32::from(Domain::ipv4()) {
+                    sock_addrs.find(|a| a.is_ipv4())
+                } else if dom == i32::from(Domain::ipv6()) {
+                    sock_addrs.find(|a| a.is_ipv6())
+                } else {
+                    unreachable!("Unknown IP domain / socket family");
                 }
-
-                Ok(addr.into())
-            } else {
-                let error_type = vm.class("_socket", "gaierror");
-                Err(vm.new_exception_msg(
-                    error_type,
-                    "nodename nor servname provided, or not known".to_owned(),
-                ))
             }
-        }
+        },
         Err(e) => {
-            let error_type = vm.class("_socket", "gaierror");
-            Err(vm.new_exception_msg(error_type, e.to_string()))
+            let error_type = GAI_ERROR.get().unwrap().clone();
+            return Err(vm.new_exception_msg(error_type, e.to_string()));
+        }
+    };
+    match sock_addr {
+        Some(sock_addr) => Ok(sock_addr.into()),
+        None => {
+            let error_type = GAI_ERROR.get().unwrap().clone();
+            Err(vm.new_exception_msg(
+                error_type,
+                "nodename nor servname provided, or not known".to_owned(),
+            ))
         }
     }
 }
@@ -761,7 +773,7 @@ fn invalid_sock() -> Socket {
 
 fn convert_sock_error(vm: &VirtualMachine, err: io::Error) -> PyBaseExceptionRef {
     if err.kind() == io::ErrorKind::TimedOut {
-        let socket_timeout = vm.class("_socket", "timeout");
+        let socket_timeout = TIMEOUT_ERROR.get().unwrap().clone();
         vm.new_exception_msg(socket_timeout, "Timed out".to_owned())
     } else {
         err.into_pyexception(vm)
@@ -770,30 +782,36 @@ fn convert_sock_error(vm: &VirtualMachine, err: io::Error) -> PyBaseExceptionRef
 
 fn get_ipv6_addr_str(ipv6: Ipv6Addr) -> String {
     match ipv6.to_ipv4() {
-        Some(_) => {
-            let segments = ipv6.segments();
-            if segments[5] == 0 && segments[6] == 0 {
-                format!("::{:x}", segments[7] as u32)
-            } else {
-                ipv6.to_string()
-            }
-        }
-        None => ipv6.to_string(),
+        Some(v4) if matches!(v4.octets(), [0, 0, _, _]) => format!("::{:x}", u32::from(v4)),
+        _ => ipv6.to_string(),
     }
+}
+
+rustpython_common::static_cell! {
+    static TIMEOUT_ERROR: PyTypeRef;
+    static GAI_ERROR: PyTypeRef;
 }
 
 pub fn make_module(vm: &VirtualMachine) -> PyObjectRef {
     let ctx = &vm.ctx;
-    let socket_timeout = ctx.new_class(
-        "socket.timeout",
-        &vm.ctx.exceptions.os_error,
-        Default::default(),
-    );
-    let socket_gaierror = ctx.new_class(
-        "socket.gaierror",
-        &vm.ctx.exceptions.os_error,
-        Default::default(),
-    );
+    let socket_timeout = TIMEOUT_ERROR
+        .get_or_init(|| {
+            ctx.new_class(
+                "socket.timeout",
+                &vm.ctx.exceptions.os_error,
+                Default::default(),
+            )
+        })
+        .clone();
+    let socket_gaierror = GAI_ERROR
+        .get_or_init(|| {
+            ctx.new_class(
+                "socket.gaierror",
+                &vm.ctx.exceptions.os_error,
+                Default::default(),
+            )
+        })
+        .clone();
 
     let module = py_module!(vm, "_socket", {
         "socket" => PySocket::make_class(ctx),
