@@ -1,7 +1,7 @@
 extern crate libloading;
 use crate::builtins::pystr::PyStrRef;
-use crate::pyobject::{PyResult, PyValue, PyObjectRef};
 use crate::builtins::pytype::PyTypeRef;
+use crate::pyobject::{PyObjectRef, PyResult, PyValue};
 use crate::VirtualMachine;
 
 use crate::stdlib::ctypes::function::PyCFuncPtr;
@@ -19,7 +19,7 @@ impl PyValue for SharedLibrary {
 
 pub fn dlopen(lib_path: PyStrRef, vm: &VirtualMachine) -> PyResult {
     let shared_lib = SharedLibrary {
-        lib: libloading::Library::new(lib_path.as_ref()).expect("Failed to load library")
+        lib: libloading::Library::new(lib_path.as_ref()).expect("Failed to load library"),
     };
     Ok(vm.new_pyobj(shared_lib))
 }

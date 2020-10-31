@@ -1,6 +1,6 @@
-use crate::VirtualMachine;
 use crate::builtins::PyTypeRef;
 use crate::pyobject::{PyValue, StaticType};
+use crate::VirtualMachine;
 
 #[pyclass(module = "_ctypes", name = "CFuncPtr")]
 #[derive(Debug)]
@@ -18,9 +18,7 @@ impl PyValue for PyCFuncPtr {
 impl PyCFuncPtr {
     #[inline]
     pub fn new(ext_func: extern "C" fn()) -> PyCFuncPtr {
-        PyCFuncPtr {
-            ext_func
-        }
+        PyCFuncPtr { ext_func }
     }
 
     #[pymethod]

@@ -1,6 +1,6 @@
+use crate::pyobject::PyClassImpl;
 use crate::pyobject::PyObjectRef;
 use crate::VirtualMachine;
-use crate::pyobject::PyClassImpl;
 
 mod dll;
 mod function;
