@@ -125,7 +125,7 @@ pub fn get_module_inits() -> HashMap<String, StdlibInitFunc> {
     modules.insert(os::MODULE_NAME.to_owned(), Box::new(os::make_module));
 
     #[cfg(any(unix, windows, target_os = "wasi"))]
-    modules.insert("ctypes".to_owned(), Box::new(ctypes::make_module));
+    modules.insert("_ctypes".to_owned(), Box::new(ctypes::make_module));
 
     // disable some modules on WASM
     #[cfg(not(target_arch = "wasm32"))]
