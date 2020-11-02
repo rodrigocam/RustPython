@@ -133,30 +133,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bindgen"
-version = "0.52.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1c85344eb535a31b62f0af37be84441ba9e7f0f4111eb0530f43d15e513fe57"
-dependencies = [
- "bitflags",
- "cexpr",
- "cfg-if 0.1.10",
- "clang-sys",
- "clap",
- "env_logger",
- "lazy_static 1.4.0",
- "lazycell",
- "log",
- "peeking_take_while",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash",
- "shlex",
- "which",
-]
-
-[[package]]
 name = "bit-set"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -274,15 +250,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed67cbde08356238e75fc4656be4749481eeffb09e19f320a25237d5221c985d"
 
 [[package]]
-name = "cexpr"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fce5b5fb86b0c57c20c834c1b412fd09c77c8a59b9473f86272709e78874cd1d"
-dependencies = [
- "nom",
-]
-
-[[package]]
 name = "cfg-if"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -307,17 +274,6 @@ dependencies = [
  "time",
  "wasm-bindgen",
  "winapi",
-]
-
-[[package]]
-name = "clang-sys"
-version = "0.28.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81de550971c976f176130da4b2978d3b524eaa0fd9ac31f3ceb5ae1231fb4853"
-dependencies = [
- "glob",
- "libc",
- "libloading 0.5.2",
 ]
 
 [[package]]
@@ -802,12 +758,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glob"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
-
-[[package]]
 name = "hashbrown"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -952,12 +902,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
 name = "lexical-core"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -978,9 +922,9 @@ checksum = "2448f6066e80e3bfc792e9c98bf705b4b0fc6e8ef5b43e5889aff0eaa9c58743"
 
 [[package]]
 name = "libffi"
-version = "0.9.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c18efe55925cc7f83bf60a61394696a734ae90e668d1f2bbd954354416fec6f2"
+checksum = "bafef83ee22d51c27348aaf6b2da007a32b9f5004809d09271432e5ea2a795dd"
 dependencies = [
  "abort_on_panic",
  "libc",
@@ -989,34 +933,12 @@ dependencies = [
 
 [[package]]
 name = "libffi-sys"
-version = "0.9.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f00e48ce437c5741a4da3b51738498343b5158c37bfa02bcb969efcc44e4e06"
+checksum = "1fc883521808e1cb81d33683f44b97cefcd3045f265fb73366f418dcd20fe7ec"
 dependencies = [
- "bindgen",
  "cc",
  "make-cmd",
- "pkg-config",
-]
-
-[[package]]
-name = "libloading"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2b111a074963af1d37a139918ac6d49ad1d0d5e47f72fd55388619691a7d753"
-dependencies = [
- "cc",
- "winapi",
-]
-
-[[package]]
-name = "libloading"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1090080fe06ec2648d0da3881d9453d97e71a45f00eb179af7fdd7e3f686fdb0"
-dependencies = [
- "cfg-if 1.0.0",
- "winapi",
 ]
 
 [[package]]
@@ -1135,16 +1057,6 @@ dependencies = [
  "cc",
  "cfg-if 0.1.10",
  "libc",
-]
-
-[[package]]
-name = "nom"
-version = "4.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ad2a91a8e869eeb30b9cb3119ae87773a8f4ae617f41b1eb9c154b2905f7bd6"
-dependencies = [
- "memchr",
- "version_check",
 ]
 
 [[package]]
@@ -1342,12 +1254,6 @@ checksum = "d95a7db200b97ef370c8e6de0088252f7e0dfff7d047a28528e47456c0fc98b6"
 dependencies = [
  "proc-macro-hack",
 ]
-
-[[package]]
-name = "peeking_take_while"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19b17cddbe7ec3f8bc800887bab5e717348c95ea2ca0b1bf0837fb964dc67099"
 
 [[package]]
 name = "petgraph"
@@ -1765,7 +1671,7 @@ dependencies = [
  "itertools",
  "lexical-core",
  "libc",
- "libloading 0.6.5",
+ "libffi",
  "libz-sys",
  "log",
  "maplit",
@@ -1976,12 +1882,6 @@ dependencies = [
  "keccak",
  "opaque-debug",
 ]
-
-[[package]]
-name = "shlex"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
 
 [[package]]
 name = "siphasher"
@@ -2388,12 +2288,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
-name = "version_check"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "914b1a6776c4c929a602fafd8bc742e06365d4bcbe48c30f9cca5824f70dc9dd"
-
-[[package]]
 name = "volatile"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2485,15 +2379,6 @@ checksum = "4bf6ef87ad7ae8008e15a355ce696bed26012b7caa21605188cfd8214ab51e2d"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "which"
-version = "3.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d011071ae14a2f6671d0b74080ae0cd8ebf3a6f8c9589a2cd45f23126fe29724"
-dependencies = [
- "libc",
 ]
 
 [[package]]

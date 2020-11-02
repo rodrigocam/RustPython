@@ -1,14 +1,13 @@
-extern crate libloading;
+use crate::builtins::tuple::PyTupleRef;
 use crate::builtins::pystr::PyStrRef;
 use crate::builtins::pytype::PyTypeRef;
-use crate::pyobject::{PyObjectRef, PyResult, PyValue};
+use crate::pyobject::{PyObjectRef, PyResult, PyValue, PyRef};
 use crate::VirtualMachine;
 
 use crate::stdlib::ctypes::function::PyCFuncPtr;
 
 #[derive(Debug)]
 struct SharedLibrary {
-    lib: libloading::Library,
 }
 
 impl PyValue for SharedLibrary {
@@ -17,14 +16,15 @@ impl PyValue for SharedLibrary {
     }
 }
 
-pub fn dlopen(lib_path: PyStrRef, vm: &VirtualMachine) -> PyResult {
+pub fn dlopen(lib_path: PyStrRef, vm: &VirtualMachine) -> PyResult<()> {
     let shared_lib = SharedLibrary {
         lib: libloading::Library::new(lib_path.as_ref()).expect("Failed to load library"),
     };
     Ok(vm.new_pyobj(shared_lib))
 }
 
-pub fn dlsym(handle: PyObjectRef, func_name: PyStrRef, vm: &VirtualMachine) -> PyResult {
+
+pub fn dlsym(handle: PyObjectRef, func_name: PyStrRef, argtypes: Option<PyTupleRef>, restype:Option<PyObjectRef>, vm: &VirtualMachine) -> PyResult {
     if let Some(slib) = handle.payload::<SharedLibrary>() {
         unsafe {
             match slib.lib.get(func_name.as_ref().as_bytes()) {
