@@ -942,6 +942,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libloading"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1090080fe06ec2648d0da3881d9453d97e71a45f00eb179af7fdd7e3f686fdb0"
+dependencies = [
+ "cfg-if 1.0.0",
+ "winapi",
+]
+
+[[package]]
 name = "libz-sys"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1669,9 +1679,11 @@ dependencies = [
  "indexmap",
  "is-macro",
  "itertools",
+ "lazy_static 1.4.0",
  "lexical-core",
  "libc",
  "libffi",
+ "libloading",
  "libz-sys",
  "log",
  "maplit",

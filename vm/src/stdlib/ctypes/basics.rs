@@ -2,14 +2,9 @@ use crate::builtins::PyTypeRef;
 use crate::pyobject::{PyValue, StaticType,PyResult};
 use crate::VirtualMachine;
 
-#[pyimpl]
-pub trait CDataObject: PyValue {
-    // A lot of the logic goes in this trait
-    // There's also other traits that should have different implementations for some functions
-    // present here
-}
+use crate::stdlib::ctypes::common::CDataObject;
 
-#[pyclass(module = "_ctypes", name = "_CData")]
+#[pyclass(module = "_ctypes", name = "_CData", base = "CDataObject")]
 #[derive(Debug)]
 pub struct PyCData {
 
@@ -34,10 +29,5 @@ impl PyCData {
     fn init(&self, vm: &VirtualMachine) -> PyResult<()> {
         Ok(())
     }
-
-}
-
-
-impl CDataObject for PyCData {
 
 }

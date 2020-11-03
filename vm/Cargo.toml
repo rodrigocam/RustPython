@@ -98,6 +98,8 @@ flamer = { version = "0.4", optional = true }
 
 rustpython-common = { path = "../common" }
 
+lazy_static = "1.4.0"
+libloading = "0.6.5"
 libffi = "1.0.0"
 
 [target.'cfg(unix)'.dependencies]

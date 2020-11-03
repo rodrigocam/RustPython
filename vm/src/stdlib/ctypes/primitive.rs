@@ -3,36 +3,12 @@ use crate::builtins::pystr::PyStrRef;
 use crate::pyobject::{PyValue, StaticType, PyResult};
 use crate::VirtualMachine;
 
-use crate::stdlib::ctypes::basics::CDataObject;
+use crate::stdlib::ctypes::common::CDataObject;
 
 const SIMPLE_TYPE_CHARS: &'static str = "cbBhHiIlLdfuzZqQP?g";
 
-// enum Value {
-//     Bool,         
-//     Char,       
-//     Wchar,     
-//     Byte,
-//     Ubyte,
-//     Short,
-//     UShort,
-//     Int,
-//     UInt,
-//     Long,
-//     LongLong,
-//     ULong,
-//     ULL,
-//     Size_t,
-//     Ssize_t,
-//     Float,
-//     Double,
-//     // LongDoudle(...) ???,
-//     Char_p,
-//     Wchar_p,
-//     Void,
-// }
 
-
-#[pyclass(module = "_ctypes", name = "_SimpleCData")]
+#[pyclass(module = "_ctypes", name = "_SimpleCData", base = "CDataObject")]
 #[derive(Debug)]
 pub struct PySimpleType {
     _type_: PyStrRef,
@@ -69,8 +45,4 @@ impl PySimpleType {
             }            
         }
     }
-}
-
-impl CDataObject for PySimpleType {
-    
 }
