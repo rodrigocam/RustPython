@@ -15,7 +15,7 @@ pub struct SharedLibrary {
 
 impl SharedLibrary {
     pub fn get_name(&self) -> String {
-        self._name
+        self._name.clone()
     }
 
     pub fn get_lib(&self) -> Arc<libloading::Library> {
@@ -32,7 +32,9 @@ impl PyValue for SharedLibrary {
 pub fn dlopen(lib_path: PyStrRef, vm: &VirtualMachine) -> PyResult<PyObjectRc> {
     let library = unsafe {
         FUNCTIONS
-            .get_or_insert_lib(lib_path.to_string())
+            .write()
+            functions
+            .get_or_insert_lib(lib_path.as_ref())
             .expect("Failed to load library")
     };
 
