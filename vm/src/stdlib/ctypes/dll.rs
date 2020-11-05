@@ -47,5 +47,5 @@ pub fn dlsym(
     func_name: String,
 ) -> Result<*const i32, libloading::Error> {
     // This need some tweaks
-    unsafe { slib.get(func_name.as_bytes())?.into_raw() as *const _ }
+    unsafe { slib.get(func_name.as_bytes()).map(|f| *f) }
 }

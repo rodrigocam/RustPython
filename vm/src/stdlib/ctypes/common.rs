@@ -3,12 +3,12 @@ extern crate libffi;
 extern crate libloading;
 
 use ::std::{collections::HashMap, sync::Arc};
-use libffi::{low, middle};
+use libffi::middle;
 use libloading::Library;
 
 use crate::builtins::pystr::PyStrRef;
 use crate::builtins::PyTypeRef;
-use crate::pyobject::{PyObjectRef, PyRef, PyResult, PyValue, StaticType};
+use crate::pyobject::{PyResult, PyValue, StaticType};
 use crate::VirtualMachine;
 
 pub const SIMPLE_TYPE_CHARS: &'static str = "cbBhHiIlLdfuzZqQP?g";

@@ -2,7 +2,7 @@ extern crate libffi;
 
 use ::std::sync::Arc;
 
-use crate::builtins::pystr::{PyStr, PyStrRef};
+use crate::builtins::pystr::PyStrRef;
 use crate::builtins::PyTypeRef;
 
 use crate::function::FuncArgs;
@@ -36,17 +36,26 @@ impl PyValue for PyCFuncPtr {
 #[pyimpl(with(Callable), flags(BASETYPE))]
 impl PyCFuncPtr {
     #[pyproperty(name = "_argtypes_")]
-    fn get_argtypes(&self) -> PyObjectRef {
-        self._argtypes_
+    fn argtypes(&self, vm: &VirtualMachine) -> PyObjectRef {
+        vm.ctx.new_list(
+            self._argtypes_
+                .into_iter()
+                .map(|a| a.into_object())
+                .collect(),
+        )
     }
 
     #[pyproperty(name = "_restype_")]
-    fn get_restype(&self) -> PyObjectRef {
-        self._restype_
+    fn restype(&self, vm: &VirtualMachine) -> PyObjectRef {
+        match self._restype_ {
+            Some(restype) => *restype.as_object(),
+            None => vm.ctx.none(),
+        }
+        // vm.ctx.new_str(self._restype_)
     }
 
     #[pyproperty(name = "_argtypes_", setter)]
-    fn set_argtypes(&self, argtypes: PyObjectRef, vm: &VirtualMachine) -> PyResult {
+    fn set_argtypes(&self, argtypes: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
         if vm.isinstance(&argtypes, &vm.ctx.types.list_type).is_ok()
             || vm.isinstance(&argtypes, &vm.ctx.types.tuple_type).is_ok()
         {
@@ -81,9 +90,10 @@ impl PyCFuncPtr {
 
             self._argtypes_.clear();
             self._argtypes_
-                .extend(c_args?.iter().map(|obj| obj.to_string().as_ref()));
+                .extend(c_args?.iter().filter_map(|obj| obj.downcast().ok()));
 
-            Ok(vm.ctx.none())
+            // Ok(vm.ctx.none())
+            Ok(())
         } else {
             Err(vm.new_type_error(format!(
                 "argtypes must be Tuple or List, {} found.",
@@ -93,10 +103,13 @@ impl PyCFuncPtr {
     }
 
     #[pyproperty(name = "_restype_", setter)]
-    fn set_restype(restype: PyObjectRef, vm: &VirtualMachine) -> PyResult {
+    fn set_restype(&self, restype: PyObjectRef, vm: &VirtualMachine) -> PyResult<()> {
         match vm.isinstance(&restype, CDataObject::static_type()) {
             Ok(bollean) => match vm.get_attribute(restype, "_type_") {
-                Ok(_type_) if SIMPLE_TYPE_CHARS.contains(_type_.to_string().as_str()) => Ok(_type_),
+                Ok(_type_) if SIMPLE_TYPE_CHARS.contains(_type_.to_string().as_str()) => {
+                    self._restype_ = _type_.downcast().ok();
+                    Ok(())
+                }
                 Ok(_type_) => Err(vm.new_attribute_error("invalid _type_ value".to_string())),
                 Err(e) => Err(vm.new_attribute_error("atribute _type_ not found".to_string())),
             },
