@@ -1,5 +1,7 @@
 extern crate libloading;
 
+use ::std::{os::raw::c_void};
+
 use crate::builtins::pystr::{PyStr};
 use crate::pyobject::{PyObjectRc, PyObjectRef, PyResult};
 use crate::VirtualMachine;
@@ -34,10 +36,10 @@ pub fn dlsym(slib: PyObjectRc, func: PyObjectRc, vm: &VirtualMachine) -> PyResul
     
     let func_name = func.downcast::<PyStr>().unwrap().as_ref();
 
-    match slib.downcast::<SharedLibrary>() {
+    match slib.downcast::<SharedLibrary>() {        
         Ok(lib) => {
             if let Ok(ptr) = lib.get_sym(func_name) {
-                Ok(vm.new_pyobj(ptr as isize))
+                Ok(vm.new_pyobj( unsafe { &mut *ptr } as *const c_void as usize))
 
             } else {
                 // @TODO: Change this error message
