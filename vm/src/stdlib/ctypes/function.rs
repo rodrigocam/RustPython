@@ -1,6 +1,6 @@
 extern crate libffi;
 
-use std::{mem,os::raw::c_void};
+use std::{mem, os::raw::c_void};
 
 use crate::builtins::pystr::{PyStr, PyStrRef};
 use crate::builtins::PyTypeRef;
@@ -10,41 +10,32 @@ use crate::function::FuncArgs;
 use crate::pyobject::{PyObjectRc, PyObjectRef, PyRef, PyResult, PyValue, StaticType};
 use crate::VirtualMachine;
 
-use crate::stdlib::ctypes::common::{
-    CDataObject, SharedLibrary, Function, SIMPLE_TYPE_CHARS,
-};
+use crate::stdlib::ctypes::common::{CDataObject, Function, SharedLibrary, SIMPLE_TYPE_CHARS};
 
 use crate::slots::Callable;
 use crate::stdlib::ctypes::dll::dlsym;
 
-fn map_types_to_res(args: &Vec<PyObjectRc>, vm: &VirtualMachine) -> PyResult<Vec<PyObjectRef>>{
-    args
-    .iter()
-    .enumerate()
-    .map(|(idx, inner_obj)| {
-        match vm.isinstance(inner_obj, CDataObject::static_type()) {
-            Ok(_) => match vm.get_attribute(inner_obj.clone(), "_type_") {
-                Ok(_type_)
-                    if SIMPLE_TYPE_CHARS.contains(_type_.to_string().as_str()) =>
-                {
-                    Ok(_type_)
-                }
-                Ok(_type_) => {
-                    Err(vm.new_attribute_error("invalid _type_ value".to_string()))
-                }
-                Err(_) => {
-                    Err(vm.new_attribute_error("atribute _type_ not found".to_string()))
-                }
-            },
-            // @TODO: Needs to return the name of the type, not String(inner_obj)
-            Err(_) => Err(vm.new_type_error(format!(
-                "object at {} is not an instance of _CDataObject, type {} found",
-                idx,
-                inner_obj.to_string()
-            ))),
-        }
-    })
-    .collect()
+fn map_types_to_res(args: &Vec<PyObjectRc>, vm: &VirtualMachine) -> PyResult<Vec<PyObjectRef>> {
+    args.iter()
+        .enumerate()
+        .map(|(idx, inner_obj)| {
+            match vm.isinstance(inner_obj, CDataObject::static_type()) {
+                Ok(_) => match vm.get_attribute(inner_obj.clone(), "_type_") {
+                    Ok(_type_) if SIMPLE_TYPE_CHARS.contains(_type_.to_string().as_str()) => {
+                        Ok(_type_)
+                    }
+                    Ok(_type_) => Err(vm.new_attribute_error("invalid _type_ value".to_string())),
+                    Err(_) => Err(vm.new_attribute_error("atribute _type_ not found".to_string())),
+                },
+                // @TODO: Needs to return the name of the type, not String(inner_obj)
+                Err(_) => Err(vm.new_type_error(format!(
+                    "object at {} is not an instance of _CDataObject, type {} found",
+                    idx,
+                    inner_obj.to_string()
+                ))),
+            }
+        })
+        .collect()
 }
 
 #[pyclass(module = "_ctypes", name = "CFuncPtr", base = "CDataObject")]
@@ -54,7 +45,7 @@ pub struct PyCFuncPtr {
     pub _argtypes_: PyRwLock<Vec<PyObjectRef>>,
     pub _restype_: PyRwLock<Box<PyObjectRef>>,
     _handle: PyObjectRc,
-    _f: PyRwLock<Box<Function>>
+    _f: PyRwLock<Box<Function>>,
 }
 
 impl PyValue for PyCFuncPtr {
@@ -82,27 +73,27 @@ impl PyCFuncPtr {
         {
             let args: Vec<PyObjectRef> = vm.extract_elements(&argtypes).unwrap();
 
-            let c_args = map_types_to_res(&args,vm);
+            let c_args = map_types_to_res(&args, vm);
 
             self._argtypes_.write().clear();
             self._argtypes_.write().extend(c_args?.into_iter());
-            
+
             let fn_ptr = self._f.write().as_mut();
-            
-            let str_types: Result<Vec<String>,_> = c_args?
+
+            let str_types: Result<Vec<String>, _> = c_args?
                 .iter()
-                .map(|obj|{
-                    if let Ok(attr) = vm.get_attribute(obj.clone(), "_type_"){
+                .map(|obj| {
+                    if let Ok(attr) = vm.get_attribute(obj.clone(), "_type_") {
                         Ok(attr.to_string())
                     } else {
                         Err(())
                     }
-                }).collect();
+                })
+                .collect();
 
             fn_ptr.set_args(str_types.unwrap());
 
             Ok(())
-
         } else {
             Err(vm.new_type_error(format!(
                 "argtypes must be Tuple or List, {} found.",
@@ -119,7 +110,7 @@ impl PyCFuncPtr {
                     if vm.isinstance(&_type_, &vm.ctx.types.str_type)?
                         && _type_.to_string().len() == 1
                         && SIMPLE_TYPE_CHARS.contains(_type_.to_string().as_str()) =>
-                {   
+                {
                     let dest = self._restype_.write().as_mut();
                     let src = restype.clone();
                     mem::replace(dest, src);
@@ -175,12 +166,11 @@ impl PyCFuncPtr {
                     _argtypes_: PyRwLock::new(Vec::new()),
                     _restype_: PyRwLock::new(Box::new(vm.ctx.none())),
                     _handle: handle.into_object().clone(),
-                    _f: PyRwLock::new(
-                        Box::new(
-                            Function::new(
-                                  mem::MaybeUninit::<c_void>::uninit(),
-                               Vec::new(), 
-                             "void")))
+                    _f: PyRwLock::new(Box::new(Function::new(
+                        mem::MaybeUninit::<c_void>::uninit(),
+                        Vec::new(),
+                        "P",
+                    ))),
                 }
                 .into_ref_with_type(vm, cls)
             } else {
@@ -212,31 +202,28 @@ impl Callable for PyCFuncPtr {
         let arg_vec = map_types_to_res(&args.args, vm)?;
 
         // This is not optimal, but I can't simply store a vector of middle::Type inside PyCFuncPtr
-        let c_args: Result<Vec<String>,()> = zelf
+        let c_args: Result<Vec<String>, ()> = zelf
             ._argtypes_
             .read()
             .iter()
-            .map(|obj|{
-                if let Ok(attr) = vm.get_attribute(obj.clone(), "_type_"){
+            .map(|obj| {
+                if let Ok(attr) = vm.get_attribute(obj.clone(), "_type_") {
                     Ok(attr.to_string())
                 } else {
                     Err(())
                 }
-            }).collect();
+            })
+            .collect();
 
         let ret_type = zelf._restype_.read().as_ref();
-        
+
         let name_py_ref = PyStr::from(&zelf._name_).into_object(vm);
         let ptr_fn = dlsym(zelf._handle.clone(), name_py_ref, vm).ok();
-        
 
-        let res = zelf._f.read().call(arg_vec,vm);
+        let res = zelf._f.read().call(arg_vec, vm);
 
         if let Ok(value) = res {
-
         } else {
-
         }
-        
     }
 }

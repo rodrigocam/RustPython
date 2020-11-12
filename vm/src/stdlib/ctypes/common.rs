@@ -2,21 +2,19 @@ extern crate lazy_static;
 extern crate libffi;
 extern crate libloading;
 
-use ::std::{mem,
-            collections::HashMap,
-            os::raw::*};
+use ::std::{collections::HashMap, mem, os::raw::*};
 
-use libffi::middle;
 use libffi::low::{
-    call as ffi_call, ffi_abi_FFI_DEFAULT_ABI as ABI, ffi_cif, ffi_type,
-    prep_cif, types, CodePtr, Error as FFIError,
+    call as ffi_call, ffi_abi_FFI_DEFAULT_ABI as ABI, ffi_cif, ffi_type, prep_cif, types, CodePtr,
+    Error as FFIError,
 };
+use libffi::middle;
 
 use libloading::Library;
 
 use crate::builtins::PyTypeRef;
 use crate::common::lock::PyRwLock;
-use crate::pyobject::{PyObjectRc, PyValue, StaticType, PyRef, PyObjectRef};
+use crate::pyobject::{PyObjectRc, PyObjectRef, PyRef, PyValue, StaticType};
 use crate::VirtualMachine;
 
 pub const SIMPLE_TYPE_CHARS: &str = "cbBhHiIlLdfuzZqQP?g";
@@ -28,7 +26,7 @@ macro_rules! ffi_type {
 }
 
 macro_rules! match_ffi_type {
-    (   
+    (
         $pointer: expr,
 
         $(
@@ -44,7 +42,7 @@ macro_rules! match_ffi_type {
             _ => unreachable!()
         }
     };
-    (   
+    (
         $kind: expr,
 
         $(
@@ -61,8 +59,6 @@ macro_rules! match_ffi_type {
         }
     }
 }
-
-
 
 fn ffi_to_rust(ty: *mut ffi_type) -> NativeType {
     match_ffi_type!(
@@ -123,7 +119,7 @@ enum NativeType {
     LongDouble(f64),
     UByte(u8),
     Pointer(*mut c_void),
-    Void
+    Void,
 }
 
 #[derive(Debug)]
@@ -135,40 +131,37 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new( fn_ptr: mem::MaybeUninit<c_void>,
-                arguments: Vec<String>,
-                return_type: &str)
-                -> Function {
-        
+    pub fn new(
+        fn_ptr: mem::MaybeUninit<c_void>,
+        arguments: Vec<String>,
+        return_type: &str,
+    ) -> Function {
         Function {
             pointer: fn_ptr,
             cif: Default::default(),
-            arguments: arguments
-                       .iter()
-                       .map(|s| str_to_type(s.as_str())).collect(),
-            
-            return_type: str_to_type(return_type)
+            arguments: arguments.iter().map(|s| str_to_type(s.as_str())).collect(),
+
+            return_type: str_to_type(return_type),
         }
     }
-    pub fn set_args(&mut self, args:Vec<String>) {
-        self.arguments = args
-                         .iter()
-                         .map(|s| str_to_type(s.as_str())).collect();
+    pub fn set_args(&mut self, args: Vec<String>) {
+        self.arguments = args.iter().map(|s| str_to_type(s.as_str())).collect();
     }
 
     pub fn set_ret(&mut self, ret: &str) {
         self.return_type = str_to_type(ret);
     }
 
-    pub fn call(&self, arg_ptrs: Vec<PyObjectRef>, vm: &VirtualMachine) -> Result<PyObjectRc, FFIError>{
-
-
+    pub fn call(
+        &self,
+        arg_ptrs: Vec<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> Result<PyObjectRc, FFIError> {
     }
 }
 
 unsafe impl Send for Function {}
 unsafe impl Sync for Function {}
-
 
 #[pyclass(module = false, name = "SharedLibrary")]
 #[derive(Debug)]
@@ -192,10 +185,11 @@ impl SharedLibrary {
     }
 
     pub fn get_sym(&self, name: &str) -> Result<*mut c_void, libloading::Error> {
-        unsafe {self.lib
+        unsafe {
+            self.lib
                 .get(name.as_bytes())
                 .map(|f: libloading::Symbol<*mut c_void>| *f)
-            }
+        }
     }
 }
 
