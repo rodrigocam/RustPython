@@ -227,11 +227,13 @@ impl PySimpleType {
     #[pyclassmethod]
     pub fn from_param(cls: PyTypeRef, vm: &VirtualMachine) {}
 
+    // Simple_repr
     #[pymethod(name = "__repr__")]
     fn repr(zelf: PyRef<Self>) -> String {
         format!("{}({})", zelf.class().name, zelf.value().to_string())
     }
 
+    // Simple_as_number
     // #[pymethod(name = "__bool__")]
     // fn bool(&self) -> bool {
     //
