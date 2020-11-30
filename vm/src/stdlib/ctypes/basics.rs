@@ -1,16 +1,18 @@
-use std::{fmt, os::raw::c_void, slice};
+use std::{fmt, slice};
 
-use crate::builtins::bytearray::PyByteArray;
 use crate::builtins::int::PyInt;
-use crate::builtins::memory::{Buffer, BufferOptions};
+use crate::builtins::memory::{try_buffer_from_object, Buffer, BufferOptions};
 use crate::builtins::pystr::PyStrRef;
 use crate::builtins::pytype::PyTypeRef;
 use crate::common::borrow::{BorrowedValue, BorrowedValueMut};
 use crate::function::OptionalArg;
 use crate::pyobject::{
-    PyObjectRc, PyObjectRef, PyRef, PyResult, PyValue, StaticType, TryFromObject,
+    PyObjectRc, PyObjectRef, PyRef, PyResult, PyValue, StaticType, TryFromObject, TypeProtocol,
 };
 use crate::VirtualMachine;
+
+use crate::stdlib::ctypes::dll::dlsym;
+use crate::stdlib::ctypes::shared_lib::SharedLibrary;
 
 use crossbeam_utils::atomic::AtomicCell;
 
@@ -46,9 +48,65 @@ fn at_address(cls: &PyTypeRef, buf: usize, vm: &VirtualMachine) -> PyResult<Vec<
             Ok(_) => Err(vm.new_type_error("abstract class".to_string())),
             Err(_) => Err(vm.new_type_error("attribute '__abstract__' must be bool".to_string())),
         },
-        Err(_) => {
-            Err(vm.new_attribute_error("class must define a '__abstract__' attribute".to_string()))
+        Err(_) => Err(vm.new_attribute_error("abstract class".to_string())),
+    }
+}
+
+fn buffer_copy(
+    cls: PyTypeRef,
+    obj: PyObjectRef,
+    offset: OptionalArg,
+    vm: &VirtualMachine,
+    copy: bool,
+) -> PyResult<PyCData> {
+    match vm.get_attribute(cls.as_object().to_owned(), "__abstract__") {
+        Ok(attr) => {
+            match bool::try_from_object(vm, attr) {
+                Ok(b) if b => {
+                    let buffer = try_buffer_from_object(vm, &obj)?;
+                    let opts = buffer.get_options().clone();
+
+                    // @TODO: Fix the way the size of stored
+                    let cls_size = vm
+                        .get_attribute(cls.as_object().to_owned(), "_size")
+                        .map(|c_s| usize::try_from_object(vm, c_s.clone()))??;
+
+                    let offset_int = offset
+                        .into_option()
+                        .map_or(Ok(0), |off| i64::try_from_object(vm, off.clone()))?;
+
+                    if opts.readonly {
+                        Err(vm.new_type_error("underlying buffer is not writable".to_string()))
+                    } else if !opts.contiguous {
+                        Err(vm.new_type_error("underlying buffer is not C contiguous".to_string()))
+                    } else if offset_int < 0 {
+                        Err(vm.new_value_error("offset cannot be negative".to_string()))
+                    } else if cls_size > opts.len - (offset_int as usize) {
+                        Err(vm.new_value_error(format!(
+                            "Buffer size too small ({} instead of at least {} bytes)",
+                            cls_size,
+                            opts.len + (offset_int as usize)
+                        )))
+                    } else if let Some(mut buffer) = buffer.as_contiguous_mut() {
+                        let buffered = if copy {
+                            buffer.to_vec()
+                        } else {
+                            let b_ptr: *mut u8 = buffer.as_mut_ptr();
+                            unsafe { Vec::from_raw_parts(b_ptr, buffer.len(), buffer.len()) }
+                        };
+
+                        Ok(PyCData::new(None, Some(buffered)))
+                    } else {
+                        Err(vm.new_buffer_error("empty buffer".to_string()))
+                    }
+                }
+                Ok(_) => Err(vm.new_type_error("abstract class".to_string())),
+                Err(_) => {
+                    Err(vm.new_type_error("attribute '__abstract__' must be bool".to_string()))
+                }
+            }
         }
+        Err(_) => Err(vm.new_type_error("abstract class".to_string())),
     }
 }
 
@@ -75,7 +133,7 @@ pub trait PyCDataMethods: PyValue {
     ) -> PyResult<PyCData> {
         if let Ok(obj) = address.downcast_exact::<PyInt>(vm) {
             if let Ok(v) = usize::try_from_object(vm, obj.into_object()) {
-                let buffer = PyByteArray::from(at_address(&cls, v, vm)?);
+                let buffer = at_address(&cls, v, vm)?;
                 Ok(PyCData::new(None, Some(buffer)))
             } else {
                 Err(vm.new_runtime_error("casting pointer failed".to_string()))
@@ -91,7 +149,9 @@ pub trait PyCDataMethods: PyValue {
         obj: PyObjectRef,
         offset: OptionalArg,
         vm: &VirtualMachine,
-    ) -> PyResult<PyCData>;
+    ) -> PyResult<PyCData> {
+        buffer_copy(cls, obj, offset, vm, false)
+    }
 
     #[pyclassmethod]
     fn from_buffer_copy(
@@ -99,7 +159,9 @@ pub trait PyCDataMethods: PyValue {
         obj: PyObjectRef,
         offset: OptionalArg,
         vm: &VirtualMachine,
-    ) -> PyResult<PyCData>;
+    ) -> PyResult<PyCData> {
+        buffer_copy(cls, obj, offset, vm, true)
+    }
 
     #[pyclassmethod]
     fn in_dll(
@@ -107,7 +169,25 @@ pub trait PyCDataMethods: PyValue {
         dll: PyObjectRef,
         name: PyStrRef,
         vm: &VirtualMachine,
-    ) -> PyResult<PyCData>;
+    ) -> PyResult<PyCData> {
+        if let Ok(h) = vm.get_attribute(cls.as_object().to_owned(), "_handle") {
+            if let Ok(handle) = h.downcast::<SharedLibrary>() {
+                let handle_obj = handle.into_object();
+                let raw_ptr = dlsym(handle_obj.clone(), name.into_object(), vm)?;
+                let sym_ptr = usize::try_from_object(vm, raw_ptr.into_object(vm))?;
+
+                let buffer = at_address(&cls, sym_ptr, vm)?;
+                Ok(PyCData::new(None, Some(buffer)))
+            } else {
+                Err(vm.new_type_error(format!(
+                    "_handle must be SharedLibrary not {}",
+                    dll.clone().class().name
+                )))
+            }
+        } else {
+            Err(vm.new_attribute_error("atribute '_handle' not found".to_string()))
+        }
+    }
 }
 
 #[pyimpl]
@@ -143,7 +223,7 @@ pub trait PyCDataBuffer: Buffer {
 #[pyclass(module = "ctypes", name = "_CData")]
 pub struct PyCData {
     _objects: AtomicCell<Vec<PyObjectRc>>,
-    _buffer: AtomicCell<PyByteArray>,
+    _buffer: AtomicCell<Vec<u8>>,
 }
 
 impl fmt::Debug for PyCData {
@@ -159,10 +239,10 @@ impl PyValue for PyCData {
 }
 
 impl PyCData {
-    fn new(objs: Option<Vec<PyObjectRc>>, buffer: Option<PyByteArray>) -> Self {
+    fn new(objs: Option<Vec<PyObjectRc>>, buffer: Option<Vec<u8>>) -> Self {
         PyCData {
-            _objects: AtomicCell::new(objs.unwrap_or(Vec::new())),
-            _buffer: AtomicCell::new(buffer.unwrap_or(PyByteArray::from(Vec::new()))),
+            _objects: AtomicCell::new(objs.unwrap_or_default()),
+            _buffer: AtomicCell::new(buffer.unwrap_or_default()),
         }
     }
 }
