@@ -12,7 +12,6 @@ use crate::pyobject::{
 use crate::VirtualMachine;
 
 use crate::stdlib::ctypes::dll::dlsym;
-use crate::stdlib::ctypes::shared_lib::SharedLibrary;
 
 use crossbeam_utils::atomic::AtomicCell;
 
@@ -171,19 +170,25 @@ pub trait PyCDataMethods: PyValue {
         vm: &VirtualMachine,
     ) -> PyResult<PyCData> {
         if let Ok(h) = vm.get_attribute(cls.as_object().to_owned(), "_handle") {
-            if let Ok(handle) = h.downcast::<SharedLibrary>() {
-                let handle_obj = handle.into_object();
-                let raw_ptr = dlsym(handle_obj.clone(), name.into_object(), vm)?;
-                let sym_ptr = usize::try_from_object(vm, raw_ptr.into_object(vm))?;
+            // This is something to be "CPython" like
+            let raw_ptr = dlsym(h.clone(), name.into_object(), vm).map_err(|e| {
+                if vm
+                    .isinstance(&e.clone().into(), &vm.ctx.exceptions.value_error)
+                    .is_ok()
+                {
+                    vm.new_type_error(format!(
+                        "_handle must be SharedLibrary not {}",
+                        dll.clone().class().name
+                    ))
+                } else {
+                    e
+                }
+            })?;
 
-                let buffer = at_address(&cls, sym_ptr, vm)?;
-                Ok(PyCData::new(None, Some(buffer)))
-            } else {
-                Err(vm.new_type_error(format!(
-                    "_handle must be SharedLibrary not {}",
-                    dll.clone().class().name
-                )))
-            }
+            let sym_ptr = usize::try_from_object(vm, raw_ptr.into_object(vm))?;
+
+            let buffer = at_address(&cls, sym_ptr, vm)?;
+            Ok(PyCData::new(None, Some(buffer)))
         } else {
             Err(vm.new_attribute_error("atribute '_handle' not found".to_string()))
         }
