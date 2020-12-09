@@ -34,6 +34,7 @@ macro_rules! into_func_args_from_tuple {
         where
             $($T: IntoPyObject,)*
         {
+            #[inline]
             fn into_args(self, vm: &VirtualMachine) -> FuncArgs {
                 let ($($n,)*) = self;
                 vec![$($n.into_pyobject(vm),)*].into()
@@ -108,13 +109,9 @@ impl FuncArgs {
         FuncArgs { args, kwargs }
     }
 
-    pub fn insert(&self, item: PyObjectRef) -> FuncArgs {
-        let mut args = FuncArgs {
-            args: self.args.clone(),
-            kwargs: self.kwargs.clone(),
-        };
-        args.args.insert(0, item);
-        args
+    pub fn prepend_arg(&mut self, item: PyObjectRef) {
+        self.args.reserve_exact(1);
+        self.args.insert(0, item)
     }
 
     pub fn shift(&mut self) -> PyObjectRef {
@@ -187,25 +184,8 @@ impl FuncArgs {
     /// during the conversion will halt the binding and return the error.
     pub fn bind<T: FromArgs>(mut self, vm: &VirtualMachine) -> PyResult<T> {
         let given_args = self.args.len();
-        let bound = T::from_args(vm, &mut self).map_err(|e| match e {
-            ArgumentError::TooFewArgs => vm.new_type_error(format!(
-                "Expected at least {} arguments ({} given)",
-                T::arity().start(),
-                given_args,
-            )),
-            ArgumentError::TooManyArgs => vm.new_type_error(format!(
-                "Expected at most {} arguments ({} given)",
-                T::arity().end(),
-                given_args,
-            )),
-            ArgumentError::InvalidKeywordArgument(name) => {
-                vm.new_type_error(format!("{} is an invalid keyword argument", name))
-            }
-            ArgumentError::RequiredKeywordArgument(name) => {
-                vm.new_type_error(format!("Required keyqord only argument {}", name))
-            }
-            ArgumentError::Exception(ex) => ex,
-        })?;
+        let bound = T::from_args(vm, &mut self)
+            .map_err(|e| e.into_exception(T::arity(), given_args, vm))?;
 
         if !self.args.is_empty() {
             Err(vm.new_type_error(format!(
@@ -213,10 +193,18 @@ impl FuncArgs {
                 T::arity().end(),
                 given_args,
             )))
-        } else if let Some(k) = self.kwargs.keys().next() {
-            Err(vm.new_type_error(format!("Unexpected keyword argument {}", k)))
+        } else if let Some(err) = self.check_kwargs_empty(vm) {
+            Err(err)
         } else {
             Ok(bound)
+        }
+    }
+
+    pub fn check_kwargs_empty(&self, vm: &VirtualMachine) -> Option<PyBaseExceptionRef> {
+        if let Some(k) = self.kwargs.keys().next() {
+            Some(vm.new_type_error(format!("Unexpected keyword argument {}", k)))
+        } else {
+            None
         }
     }
 }
@@ -240,6 +228,35 @@ pub enum ArgumentError {
 impl From<PyBaseExceptionRef> for ArgumentError {
     fn from(ex: PyBaseExceptionRef) -> Self {
         ArgumentError::Exception(ex)
+    }
+}
+
+impl ArgumentError {
+    fn into_exception(
+        self,
+        arity: RangeInclusive<usize>,
+        num_given: usize,
+        vm: &VirtualMachine,
+    ) -> PyBaseExceptionRef {
+        match self {
+            ArgumentError::TooFewArgs => vm.new_type_error(format!(
+                "Expected at least {} arguments ({} given)",
+                arity.start(),
+                num_given
+            )),
+            ArgumentError::TooManyArgs => vm.new_type_error(format!(
+                "Expected at most {} arguments ({} given)",
+                arity.end(),
+                num_given
+            )),
+            ArgumentError::InvalidKeywordArgument(name) => {
+                vm.new_type_error(format!("{} is an invalid keyword argument", name))
+            }
+            ArgumentError::RequiredKeywordArgument(name) => {
+                vm.new_type_error(format!("Required keyqord only argument {}", name))
+            }
+            ArgumentError::Exception(ex) => ex,
+        }
     }
 }
 
@@ -439,7 +456,7 @@ impl OptionalArg<PyObjectRef> {
     }
 }
 
-pub type OptionalOption<T> = OptionalArg<Option<T>>;
+pub type OptionalOption<T = PyObjectRef> = OptionalArg<Option<T>>;
 
 impl<T> OptionalOption<T> {
     #[inline]

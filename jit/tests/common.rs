@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use rustpython_bytecode::bytecode::{CodeObject, Constant, Instruction, NameScope};
+use rustpython_bytecode::bytecode::{CodeObject, ConstantData, Instruction};
 use rustpython_jit::{CompiledCode, JitType};
 
 #[derive(Debug, Clone)]
@@ -13,7 +13,7 @@ pub struct Function {
 impl Function {
     pub fn compile(self) -> CompiledCode {
         let mut arg_types = Vec::new();
-        for arg in self.code.arg_names.iter() {
+        for arg in self.code.arg_names().args {
             let arg_type = match self.annotations.get(arg) {
                 Some(StackValue::String(annotation)) => match annotation.as_str() {
                     "int" => JitType::Int,
@@ -39,12 +39,12 @@ enum StackValue {
     Function(Function),
 }
 
-impl From<Constant> for StackValue {
-    fn from(value: Constant) -> Self {
+impl From<ConstantData> for StackValue {
+    fn from(value: ConstantData) -> Self {
         match value {
-            Constant::String { value } => StackValue::String(value),
-            Constant::None => StackValue::None,
-            Constant::Code { code } => StackValue::Code(code),
+            ConstantData::Str { value } => StackValue::String(value),
+            ConstantData::None => StackValue::None,
+            ConstantData::Code { code } => StackValue::Code(code),
             c => unimplemented!("constant {:?} isn't yet supported in py_function!", c),
         }
     }
@@ -64,22 +64,27 @@ impl StackMachine {
     }
 
     pub fn run(&mut self, code: CodeObject) {
-        for instruction in code.instructions {
-            if self.process_instruction(instruction) {
+        for instruction in code.instructions.into_vec() {
+            if self.process_instruction(instruction, &code.constants, &code.names) {
                 break;
             }
         }
     }
 
-    fn process_instruction(&mut self, instruction: Instruction) -> bool {
+    fn process_instruction(
+        &mut self,
+        instruction: Instruction,
+        constants: &[ConstantData],
+        names: &[String],
+    ) -> bool {
         match instruction {
-            Instruction::LoadConst { value } => self.stack.push(value.into()),
-            Instruction::LoadName {
-                name,
-                scope: NameScope::Free,
-            } => self.stack.push(StackValue::String(name)),
-            Instruction::StoreName { name, .. } => {
-                self.locals.insert(name, self.stack.pop().unwrap());
+            Instruction::LoadConst { idx } => self.stack.push(constants[idx].clone().into()),
+            Instruction::LoadNameAny(idx) => {
+                self.stack.push(StackValue::String(names[idx].clone()))
+            }
+            Instruction::StoreLocal(idx) => {
+                self.locals
+                    .insert(names[idx].clone(), self.stack.pop().unwrap());
             }
             Instruction::StoreAttr { .. } => {
                 // Do nothing except throw away the stack values

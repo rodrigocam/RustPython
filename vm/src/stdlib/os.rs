@@ -25,7 +25,15 @@ use crate::pyobject::{
     BorrowValue, Either, IntoPyObject, ItemProtocol, PyObjectRef, PyRef, PyResult,
     PyStructSequence, PyValue, StaticType, TryFromObject, TypeProtocol,
 };
+use crate::slots::PyIter;
 use crate::vm::VirtualMachine;
+
+// this is basically what CPython has for Py_off_t; windows uses long long
+// for offsets, other platforms just use off_t
+#[cfg(not(windows))]
+pub type Offset = libc::off_t;
+#[cfg(windows)]
+pub type Offset = libc::c_longlong;
 
 #[derive(Debug, Copy, Clone)]
 enum OutputMode {
@@ -67,6 +75,24 @@ impl OutputMode {
     }
 }
 
+fn osstr_contains_nul(s: &ffi::OsStr) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        s.as_bytes().contains(&b'\0')
+    }
+    #[cfg(target_os = "wasi")]
+    {
+        use std::os::wasi::ffi::OsStrExt;
+        s.as_bytes().contains(&b'\0')
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        s.encode_wide().any(|c| c == 0)
+    }
+}
+
 pub struct PyPathLike {
     pub path: PathBuf,
     mode: OutputMode,
@@ -86,6 +112,12 @@ fn fs_metadata<P: AsRef<Path>>(path: P, follow_symlink: bool) -> io::Result<fs::
         fs::metadata(path.as_ref())
     } else {
         fs::symlink_metadata(path.as_ref())
+    }
+}
+
+impl AsRef<Path> for PyPathLike {
+    fn as_ref(&self) -> &Path {
+        &self.path
     }
 }
 
@@ -249,7 +281,7 @@ fn os_unimpl<T>(func: &str, vm: &VirtualMachine) -> PyResult<T> {
 
 #[pymodule]
 mod _os {
-    use super::platform::OpenFlags;
+    use super::OpenFlags;
     use super::*;
 
     #[pyattr]
@@ -257,6 +289,9 @@ mod _os {
         O_APPEND, O_CREAT, O_EXCL, O_RDONLY, O_RDWR, O_TRUNC, O_WRONLY, SEEK_CUR, SEEK_END,
         SEEK_SET,
     };
+    #[cfg(any(target_os = "dragonfly", target_os = "freebsd", target_os = "linux"))]
+    #[pyattr]
+    use libc::{SEEK_DATA, SEEK_HOLE};
     #[pyattr]
     pub(super) const F_OK: u8 = 0;
     #[pyattr]
@@ -287,6 +322,9 @@ mod _os {
             dir_fd: dir_fd.into_option(),
         };
         let fname = make_path(vm, &name, &dir_fd)?;
+        if osstr_contains_nul(fname) {
+            return Err(vm.new_value_error("embedded null character".to_owned()));
+        }
 
         let mut options = OpenOptions::new();
 
@@ -350,6 +388,7 @@ mod _os {
 
     #[cfg(any(target_os = "macos"))]
     #[pyfunction]
+    #[allow(clippy::too_many_arguments)]
     fn sendfile(
         out_fd: i32,
         in_fd: i32,
@@ -357,7 +396,7 @@ mod _os {
         count: i64,
         headers: OptionalArg<PyObjectRef>,
         trailers: OptionalArg<PyObjectRef>,
-        flags: OptionalArg<i32>,
+        _flags: OptionalArg<i32>,
         vm: &VirtualMachine,
     ) -> PyResult {
         let headers = match headers.into_option() {
@@ -437,7 +476,17 @@ mod _os {
     #[pyfunction]
     fn remove(path: PyPathLike, dir_fd: DirFd, vm: &VirtualMachine) -> PyResult<()> {
         let path = make_path(vm, &path, &dir_fd)?;
-        fs::remove_file(path).map_err(|err| err.into_pyexception(vm))
+        let is_junction = cfg!(windows)
+            && fs::symlink_metadata(path).map_or(false, |meta| {
+                let ty = meta.file_type();
+                ty.is_dir() && ty.is_symlink()
+            });
+        let res = if is_junction {
+            fs::remove_dir(path)
+        } else {
+            fs::remove_file(path)
+        };
+        res.map_err(|err| err.into_pyexception(vm))
     }
 
     #[pyfunction]
@@ -609,39 +658,11 @@ mod _os {
         }
     }
 
-    #[pyimpl]
+    #[pyimpl(with(PyIter))]
     impl ScandirIterator {
-        #[pymethod(name = "__next__")]
-        fn next(&self, vm: &VirtualMachine) -> PyResult {
-            if self.exhausted.load() {
-                return Err(vm.new_stop_iteration());
-            }
-
-            match self.entries.write().next() {
-                Some(entry) => match entry {
-                    Ok(entry) => Ok(DirEntry {
-                        entry,
-                        mode: self.mode,
-                    }
-                    .into_ref(vm)
-                    .into_object()),
-                    Err(err) => Err(err.into_pyexception(vm)),
-                },
-                None => {
-                    self.exhausted.store(true);
-                    Err(vm.new_stop_iteration())
-                }
-            }
-        }
-
         #[pymethod]
         fn close(&self) {
             self.exhausted.store(true);
-        }
-
-        #[pymethod(name = "__iter__")]
-        fn iter(zelf: PyRef<Self>) -> PyRef<Self> {
-            zelf
         }
 
         #[pymethod(name = "__enter__")]
@@ -652,6 +673,29 @@ mod _os {
         #[pymethod(name = "__exit__")]
         fn exit(zelf: PyRef<Self>, _args: FuncArgs) {
             zelf.close()
+        }
+    }
+    impl PyIter for ScandirIterator {
+        fn next(zelf: &PyRef<Self>, vm: &VirtualMachine) -> PyResult {
+            if zelf.exhausted.load() {
+                return Err(vm.new_stop_iteration());
+            }
+
+            match zelf.entries.write().next() {
+                Some(entry) => match entry {
+                    Ok(entry) => Ok(DirEntry {
+                        entry,
+                        mode: zelf.mode,
+                    }
+                    .into_ref(vm)
+                    .into_object()),
+                    Err(err) => Err(err.into_pyexception(vm)),
+                },
+                None => {
+                    zelf.exhausted.store(true);
+                    Err(vm.new_stop_iteration())
+                }
+            }
         }
     }
 
@@ -772,20 +816,13 @@ mod _os {
         Ok(buf)
     }
 
-    // this is basically what CPython has for Py_off_t; windows uses long long
-    // for offsets, other platforms just use off_t
-    #[cfg(not(windows))]
-    pub type Offset = libc::off_t;
-    #[cfg(windows)]
-    pub type Offset = libc::c_longlong;
-
     #[pyfunction]
-    fn isatty(fd: i32) -> bool {
+    pub fn isatty(fd: i32) -> bool {
         unsafe { suppress_iph!(libc::isatty(fd)) != 0 }
     }
 
     #[pyfunction]
-    fn lseek(fd: i32, position: Offset, how: i32, vm: &VirtualMachine) -> PyResult<Offset> {
+    pub fn lseek(fd: i32, position: Offset, how: i32, vm: &VirtualMachine) -> PyResult<Offset> {
         #[cfg(not(windows))]
         let res = unsafe { suppress_iph!(libc::lseek(fd, position, how)) };
         #[cfg(windows)]
@@ -881,6 +918,32 @@ mod _os {
             .into_owned()
     }
 
+    #[pyfunction]
+    pub fn ftruncate(fd: i64, length: Offset, vm: &VirtualMachine) -> PyResult<()> {
+        let f = rust_file(fd);
+        f.set_len(length as u64)
+            .map_err(|e| e.into_pyexception(vm))?;
+        raw_file_number(f);
+        Ok(())
+    }
+
+    #[pyfunction]
+    fn truncate(path: PyObjectRef, length: Offset, vm: &VirtualMachine) -> PyResult<()> {
+        if let Ok(fd) = i64::try_from_object(vm, path.clone()) {
+            return ftruncate(fd, length, vm);
+        }
+        let path = PyPathLike::try_from_object(vm, path)?;
+        // TODO: just call libc::truncate() on POSIX
+        let f = OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .map_err(|e| e.into_pyexception(vm))?;
+        f.set_len(length as u64)
+            .map_err(|e| e.into_pyexception(vm))?;
+        drop(f);
+        Ok(())
+    }
+
     #[pyattr]
     #[pyclass(module = "os", name = "terminal_size")]
     #[derive(PyStructSequence)]
@@ -942,6 +1005,7 @@ mod _os {
         supports
     }
 }
+pub(crate) use _os::{ftruncate, isatty, lseek};
 
 struct SupportFunc {
     name: &'static str,
@@ -963,7 +1027,12 @@ impl<'a> SupportFunc {
     where
         F: IntoPyNativeFunc<FKind>,
     {
-        let func_obj = vm.ctx.new_function(func);
+        let ctx = &vm.ctx;
+        let func_obj = ctx
+            .new_function_named(func, name.to_owned())
+            .into_function()
+            .with_module(ctx.new_str(MODULE_NAME))
+            .build(ctx);
         Self {
             name,
             func_obj,
@@ -1082,28 +1151,6 @@ mod posix {
     #[pyattr]
     const EX_CONFIG: i8 = exitcode::CONFIG as i8;
 
-    // cfg taken from nix
-    #[cfg(any(
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        all(
-            target_os = "linux",
-            not(any(target_env = "musl", target_arch = "mips", target_arch = "mips64"))
-        )
-    ))]
-    #[pyattr]
-    const SEEK_DATA: i8 = unistd::Whence::SeekData as i8;
-    #[cfg(any(
-        target_os = "dragonfly",
-        target_os = "freebsd",
-        all(
-            target_os = "linux",
-            not(any(target_env = "musl", target_arch = "mips", target_arch = "mips64"))
-        )
-    ))]
-    #[pyattr]
-    const SEEK_HOLE: i8 = unistd::Whence::SeekHole as i8;
-
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     #[pyattr]
     const POSIX_SPAWN_OPEN: i32 = PosixSpawnFileActionIdentifier::Open as i32;
@@ -1118,7 +1165,7 @@ mod posix {
     #[pyattr]
     const _COPYFILE_DATA: u32 = 1 << 3;
 
-    pub(super) type OpenFlags = i32;
+    pub(crate) type OpenFlags = i32;
 
     // Flags for os_access
     bitflags! {
@@ -1816,12 +1863,11 @@ mod posix {
     }
 
     #[pyfunction]
-    fn sync(_vm: &VirtualMachine) -> PyResult<()> {
+    fn sync() {
         #[cfg(not(any(target_os = "redox", target_os = "android")))]
         unsafe {
             libc::sync();
         }
-        Ok(())
     }
 
     // cfg from nix
@@ -2260,7 +2306,7 @@ mod nt {
     #[pyattr]
     use libc::O_BINARY;
 
-    pub(super) type OpenFlags = u32;
+    pub(crate) type OpenFlags = u32;
 
     pub fn raw_file_number(handle: File) -> i64 {
         use std::os::windows::io::IntoRawHandle;
@@ -2354,14 +2400,14 @@ mod nt {
         const S_IFREG: u32 = 0o100000;
         let mut m: u32 = 0;
         if attr & FILE_ATTRIBUTE_DIRECTORY == FILE_ATTRIBUTE_DIRECTORY {
-            m |= S_IFDIR | 0111; /* IFEXEC for user,group,other */
+            m |= S_IFDIR | 0o111; /* IFEXEC for user,group,other */
         } else {
             m |= S_IFREG;
         }
         if attr & FILE_ATTRIBUTE_READONLY == FILE_ATTRIBUTE_READONLY {
-            m |= 0444;
+            m |= 0o444;
         } else {
-            m |= 0666;
+            m |= 0o666;
         }
         m
     }
@@ -2613,7 +2659,7 @@ mod minor {
     use super::*;
 
     #[cfg(target_os = "wasi")]
-    pub(super) type OpenFlags = u16;
+    pub(crate) type OpenFlags = u16;
 
     #[cfg(target_os = "wasi")]
     pub(crate) fn raw_file_number(handle: File) -> i64 {
@@ -2674,4 +2720,4 @@ mod minor {
 #[cfg(not(any(unix, windows)))]
 use minor as platform;
 
-pub(crate) use platform::{raw_file_number, rust_file, MODULE_NAME};
+pub(crate) use platform::{raw_file_number, rust_file, OpenFlags, MODULE_NAME};

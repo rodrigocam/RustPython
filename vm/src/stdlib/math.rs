@@ -131,15 +131,8 @@ fn math_sqrt(value: IntoPyFloat, vm: &VirtualMachine) -> PyResult<f64> {
 }
 
 fn math_isqrt(x: PyObjectRef, vm: &VirtualMachine) -> PyResult<BigInt> {
-    let index = vm.to_index(&x).ok_or_else(|| {
-        vm.new_type_error(format!(
-            "'{}' object cannot be interpreted as an integer",
-            x.class().name
-        ))
-    })?;
-    // __index__ may have returned non-int type
-    let python_value = index?;
-    let value = python_value.borrow_value();
+    let index = vm.to_index(&x)?;
+    let value = index.borrow_value();
 
     if value.is_negative() {
         return Err(vm.new_value_error("isqrt() argument must be nonnegative".to_owned()));
@@ -225,7 +218,15 @@ fn math_radians(x: IntoPyFloat) -> f64 {
 }
 
 // Hyperbolic functions:
-make_math_func!(math_acosh, acosh);
+fn math_acosh(x: IntoPyFloat, vm: &VirtualMachine) -> PyResult<f64> {
+    let x = x.to_f64();
+    if x.is_sign_negative() || x.is_zero() {
+        Err(vm.new_value_error("math domain error".to_owned()))
+    } else {
+        Ok(x.acosh())
+    }
+}
+
 make_math_func!(math_asinh, asinh);
 make_math_func!(math_atanh, atanh);
 make_math_func!(math_cosh, cosh);
@@ -337,9 +338,9 @@ fn math_ldexp(
 ) -> PyResult<f64> {
     let value = match value {
         Either::A(f) => f.to_f64(),
-        Either::B(z) => int::try_float(z.borrow_value(), vm)?,
+        Either::B(z) => int::to_float(z.borrow_value(), vm)?,
     };
-    Ok(value * (2_f64).powf(int::try_float(i.borrow_value(), vm)?))
+    Ok(value * (2_f64).powf(int::to_float(i.borrow_value(), vm)?))
 }
 
 fn math_perf_arb_len_int_op<F>(args: Args<PyIntRef>, op: F, default: BigInt) -> BigInt
