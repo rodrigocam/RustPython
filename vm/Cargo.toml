@@ -99,10 +99,6 @@ flamer = { version = "0.4", optional = true }
 
 rustpython-common = { path = "../common" }
 
-lazy_static = "1.4.0"
-libloading = "0.6.5"
-libffi = "1.0.0"
-
 [target.'cfg(unix)'.dependencies]
 exitcode = "1.1.2"
 uname = "0.1.1"
@@ -117,6 +113,9 @@ openssl = { version = "0.10", features = ["vendored"], optional = true }
 openssl-sys = { version = "0.9", optional = true }
 openssl-probe = { version = "0.1", optional = true }
 utime = "0.3"
+# ctypes
+libloading = "0.6.5"
+libffi = "1.0.0"
 
 [target.'cfg(any(not(target_arch = "wasm32"), target_os = "wasi"))'.dependencies]
 num_cpus = "1"

@@ -1771,7 +1771,6 @@ dependencies = [
  "indexmap",
  "is-macro",
  "itertools",
- "lazy_static 1.4.0",
  "lexical-core",
  "libc",
  "libffi",
