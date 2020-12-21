@@ -61,7 +61,7 @@ macro_rules! match_ffi_type {
     }
 }
 
-pub fn str_to_type(ty: &str) -> Type {
+fn str_to_type(ty: &str) -> Type {
     match_ffi_type!(
         ty,
         "c" => c_schar
@@ -129,7 +129,7 @@ fn py_to_ffi(ty: &Type, obj: PyObjectRef, vm: &VirtualMachine) -> PyResult<Arg> 
 }
 
 #[derive(Debug)]
-pub struct Function {
+struct Function {
     pointer: *mut c_void,
     arguments: Vec<Type>,
     return_type: Box<Type>,
