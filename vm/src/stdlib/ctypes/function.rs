@@ -1,6 +1,7 @@
-use std::{fmt, os::raw::*, ptr};
+use std::{fmt, mem, os::raw::*};
 
 use crossbeam_utils::atomic::AtomicCell;
+use widestring::WideChar;
 
 use libffi::middle::{arg, Arg, Cif, CodePtr, Type};
 
@@ -54,7 +55,7 @@ macro_rules! match_ffi_type {
             $(
                 $(
                     t if t == $type => { ffi_type!($body) }
-                )+
+                )?
             )+
             _ => unreachable!()
         }
@@ -64,8 +65,8 @@ macro_rules! match_ffi_type {
 fn str_to_type(ty: &str) -> Type {
     match_ffi_type!(
         ty,
+        "u" => WideChar
         "c" => c_schar
-        "u" => c_int
         "b" => i8
         "h" => c_short
         "H" => c_ushort
@@ -79,8 +80,7 @@ fn str_to_type(ty: &str) -> Type {
         "d" => f64
         "g" => longdouble
         "?" | "B" => c_uchar
-        "z" | "Z" => pointer
-        "P" => void
+        "P" | "z" | "Z" => pointer
     )
 }
 
@@ -120,9 +120,7 @@ fn py_to_ffi(ty: &Type, obj: PyObjectRef, vm: &VirtualMachine) -> PyResult<Arg> 
         pointer => {
             arg(&(usize::try_from_object(vm, obj)? as *mut usize as *mut c_void))
         }
-        void => {
-            arg(&ptr::null::<c_void>())
-        }
+        // void should not be here, once an argument cannot be pure void
     );
 
     Ok(res)
@@ -141,7 +139,11 @@ impl Function {
             pointer: fn_ptr as *mut _,
             arguments: arguments.iter().map(|s| str_to_type(s.as_str())).collect(),
 
-            return_type: Box::new(str_to_type(return_type)),
+            return_type: Box::new(if return_type == "P" {
+                Type::void()
+            } else {
+                str_to_type(return_type)
+            }),
         }
     }
     pub fn set_args(&mut self, args: Vec<String>) {
@@ -151,7 +153,11 @@ impl Function {
     }
 
     pub fn set_ret(&mut self, ret: &str) {
-        (*self.return_type.as_mut()) = str_to_type(ret);
+        (*self.return_type.as_mut()) = if ret == "P" {
+            Type::void()
+        } else {
+            str_to_type(ret)
+        };
     }
 
     pub fn call(&mut self, arg_ptrs: Vec<PyObjectRef>, vm: &VirtualMachine) -> PyResult {

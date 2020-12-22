@@ -266,6 +266,18 @@ pub struct RawBuffer {
     pub size: usize,
 }
 
+impl fmt::Debug for RawBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RawBuffer {{ size: {} }}", self.size)
+    }
+}
+
+impl PyValue for RawBuffer {
+    fn class(vm: &VirtualMachine) -> &PyTypeRef {
+        &vm.ctx.types.object_type
+    }
+}
+
 unsafe impl Send for RawBuffer {}
 unsafe impl Sync for RawBuffer {}
 
