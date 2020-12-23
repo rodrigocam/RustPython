@@ -13,6 +13,7 @@ use crate::pyobject::{
 use crate::slots::BufferProtocol;
 use crate::VirtualMachine;
 
+use crate::stdlib::ctypes::array::make_array_with_lenght;
 use crate::stdlib::ctypes::dll::dlsym;
 
 use crossbeam_utils::atomic::AtomicCell;
@@ -202,14 +203,19 @@ pub trait PyCDataSequenceMethods: PyValue {
     // Basically the sq_repeat slot is CDataType_repeat
     // which transforms into a Array
 
-    // #[pymethod(name = "__mul__")]
-    // fn mul(&self, counter: isize, vm: &VirtualMachine) -> PyObjectRef {
-    // }
-
-    // #[pymethod(name = "__rmul__")]
-    // fn rmul(&self, counter: isize, vm: &VirtualMachine) -> PyObjectRef {
-    //     self.mul(counter, vm)
-    // }
+    #[pymethod(name = "__mul__")]
+    #[pymethod(name = "__rmul__")]
+    fn mul(zelf: PyRef<Self>, length: isize, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        if length < 0 {
+            Err(vm.new_value_error(format!("Array length must be >= 0, not {} length", length)))
+        } else {
+            Ok(
+                make_array_with_lenght(zelf.clone_class(), length as usize, vm)?
+                    .as_object()
+                    .clone(),
+            )
+        }
+    }
 }
 
 impl<'a> BorrowValue<'a> for PyCData {

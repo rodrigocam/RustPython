@@ -1,7 +1,6 @@
-use std::{fmt, mem, os::raw::*};
+use std::{fmt, os::raw::*};
 
 use crossbeam_utils::atomic::AtomicCell;
-use widestring::WideChar;
 
 use libffi::middle::{arg, Arg, Cif, CodePtr, Type};
 
@@ -48,7 +47,7 @@ macro_rules! match_ffi_type {
         $kind: expr,
 
         $(
-            $($type: tt)|+ => $body: ident
+            $($type: literal)|+ => $body: ident
         )+
     ) => {
         match $kind {
@@ -63,25 +62,32 @@ macro_rules! match_ffi_type {
 }
 
 fn str_to_type(ty: &str) -> Type {
-    match_ffi_type!(
-        ty,
-        "u" => WideChar
-        "c" => c_schar
-        "b" => i8
-        "h" => c_short
-        "H" => c_ushort
-        "i" => c_int
-        "I" => c_uint
-        "l" => c_long
-        "q" => c_longlong
-        "L" => c_ulong
-        "Q" => c_ulonglong
-        "f" => f32
-        "d" => f64
-        "g" => longdouble
-        "?" | "B" => c_uchar
-        "P" | "z" | "Z" => pointer
-    )
+    if ty == "u" {
+        if cfg!(windows) {
+            ffi_type!(c_ushort)
+        } else {
+            ffi_type!(c_uint)
+        }
+    } else {
+        match_ffi_type!(
+            ty,
+            "c" => c_schar
+            "b" => i8
+            "h" => c_short
+            "H" => c_ushort
+            "i" => c_int
+            "I" => c_uint
+            "l" => c_long
+            "q" => c_longlong
+            "L" => c_ulong
+            "Q" => c_ulonglong
+            "f" => f32
+            "d" => f64
+            "g" => longdouble
+            "?" | "B" => c_uchar
+            "P" | "z" | "Z" => pointer
+        )
+    }
 }
 
 fn py_to_ffi(ty: &Type, obj: PyObjectRef, vm: &VirtualMachine) -> PyResult<Arg> {
