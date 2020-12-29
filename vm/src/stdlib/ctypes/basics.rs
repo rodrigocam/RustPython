@@ -240,9 +240,9 @@ impl BufferProtocol for PyCData {
 }
 
 #[derive(Debug)]
-struct PyCDataBuffer {
-    data: PyCDataRef,
-    options: BufferOptions,
+pub struct PyCDataBuffer {
+    pub data: PyCDataRef,
+    pub options: BufferOptions,
 }
 
 // This trait will be used by all types
@@ -311,7 +311,7 @@ impl PyValue for PyCData {
 }
 
 impl PyCData {
-    fn new(objs: Option<Vec<PyObjectRef>>, buffer: Option<RawBuffer>) -> Self {
+    pub fn new(objs: Option<Vec<PyObjectRef>>, buffer: Option<RawBuffer>) -> Self {
         PyCData {
             _objects: AtomicCell::new(objs.unwrap_or_default()),
             _buffer: PyRwLock::new(buffer.unwrap_or(RawBuffer {
