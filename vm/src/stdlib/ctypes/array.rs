@@ -4,10 +4,10 @@ use std::{fmt, mem, os::raw::*};
 use num_bigint::Sign;
 use widestring::{WideCString, WideChar};
 
-use crate::builtins::memory::{try_buffer_from_object, Buffer, BufferOptions};
+use crate::builtins::memory::{try_buffer_from_object, Buffer};
 use crate::builtins::slice::PySliceRef;
 use crate::builtins::{PyBytes, PyInt, PyList, PyStr, PyTypeRef};
-use crate::common::lock::PyRwLockReadGuard;
+use crate::common::lock::{PyRwLock, PyRwLockReadGuard, PyRwLockWriteGuard};
 use crate::function::FuncArgs;
 use crate::pyobject::{
     BorrowValue, Either, IdProtocol, PyObjectRef, PyRef, PyResult, PyValue, StaticType,
@@ -16,7 +16,7 @@ use crate::pyobject::{
 use crate::slots::BufferProtocol;
 use crate::VirtualMachine;
 
-use crate::stdlib::ctypes::basics::{PyCData, PyCDataBuffer, RawBuffer};
+use crate::stdlib::ctypes::basics::{generic_get_buffer, BorrowValueMut, PyCData, RawBuffer};
 use crate::stdlib::ctypes::pointer::PyCPointer;
 use crate::stdlib::ctypes::primitive::PySimpleType;
 
@@ -161,18 +161,13 @@ pub fn make_array_with_lenght(
 
                 let itemsize = get_size(subletter.as_str());
 
-                let parent = PyCData::new(
-                    None,
-                    Some(RawBuffer {
-                        inner: Vec::with_capacity(length * itemsize).as_mut_ptr(),
-                        size: length * itemsize,
-                    }),
-                );
-
                 Ok(PyCArray {
                     _type_: subletter,
                     _length_: length,
-                    _parent: parent,
+                    _buffer: PyRwLock::new(RawBuffer {
+                        inner: Vec::with_capacity(length * itemsize).as_mut_ptr(),
+                        size: length * itemsize,
+                    }),
                 }
                 .into_ref_with_type(vm, cls)?)
             }
@@ -187,7 +182,7 @@ pub fn make_array_with_lenght(
 pub struct PyCArray {
     _type_: String,
     _length_: usize,
-    _parent: PyCData, //a hack
+    _buffer: PyRwLock<RawBuffer>,
 }
 
 impl fmt::Debug for PyCArray {
@@ -211,27 +206,19 @@ impl<'a> BorrowValue<'a> for PyCArray {
     type Borrowed = PyRwLockReadGuard<'a, RawBuffer>;
 
     fn borrow_value(&'a self) -> Self::Borrowed {
-        self._parent.borrow_value()
+        self._buffer.read()
+    }
+}
+
+impl<'a> BorrowValueMut<'a> for PyCArray {
+    fn borrow_value_mut(&'a self) -> PyRwLockWriteGuard<'a, RawBuffer> {
+        self._buffer.write()
     }
 }
 
 impl BufferProtocol for PyCArray {
     fn get_buffer(zelf: &PyRef<Self>, vm: &VirtualMachine) -> PyResult<Box<dyn Buffer>> {
-        let raw_buffer_guard = zelf.borrow_value();
-        let raw_buffer = RawBuffer {
-            inner: raw_buffer_guard.inner,
-            size: raw_buffer_guard.size,
-        };
-        let parent_cloned_ref = PyCData::new(None, Some(raw_buffer)).into_ref(vm);
-
-        Ok(Box::new(PyCDataBuffer {
-            data: parent_cloned_ref,
-            options: BufferOptions {
-                readonly: false,
-                len: raw_buffer_guard.size,
-                ..Default::default()
-            },
-        }))
+        generic_get_buffer::<Self>(zelf, vm)
     }
 }
 
@@ -455,6 +442,9 @@ impl PyCArray {
                     .step
                     .clone()
                     .map_or(Ok(1), |o| isize::try_from_object(vm, o))?;
+
+                assert!(step != 0);
+                assert!(step >= -isize::MAX);
 
                 let mut start = slice
                     .start

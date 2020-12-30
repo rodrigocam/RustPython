@@ -14,7 +14,7 @@ use crate::pyobject::{
 use crate::VirtualMachine;
 
 use crate::stdlib::ctypes::array::PyCArray;
-use crate::stdlib::ctypes::basics::PyCData;
+use crate::stdlib::ctypes::basics::{BorrowValueMut, PyCData};
 use crate::stdlib::ctypes::function::PyCFuncPtr;
 use crate::stdlib::ctypes::pointer::PyCPointer;
 
