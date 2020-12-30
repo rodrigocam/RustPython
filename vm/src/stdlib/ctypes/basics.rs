@@ -8,7 +8,7 @@ use crate::common::borrow::{BorrowedValue, BorrowedValueMut};
 use crate::common::lock::{PyRwLock, PyRwLockReadGuard, PyRwLockWriteGuard};
 use crate::function::OptionalArg;
 use crate::pyobject::{
-    BorrowValue, PyObjectRef, PyRef, PyResult, PyValue, StaticType, TryFromObject, TypeProtocol,
+    PyObjectRef, PyRef, PyResult, PyValue, StaticType, TryFromObject, TypeProtocol,
 };
 use crate::slots::BufferProtocol;
 use crate::VirtualMachine;
@@ -119,6 +119,24 @@ fn buffer_copy(
     }
 }
 
+pub fn default_from_param(
+    cls: PyTypeRef,
+    value: PyObjectRef,
+    vm: &VirtualMachine,
+) -> PyResult<PyObjectRef> {
+    if vm.isinstance(&value, &cls)? {
+        Ok(value)
+    } else if let Ok(parameter) = vm.get_attribute(value.clone(), "_as_parameter_") {
+        default_from_param(cls, parameter, vm)
+    } else {
+        Err(vm.new_attribute_error(format!(
+            "expected {} instance instead of {}",
+            cls.name,
+            value.class().name
+        )))
+    }
+}
+
 #[pyimpl]
 pub trait PyCDataMethods: PyValue {
     // A lot of the logic goes in this trait
@@ -132,7 +150,8 @@ pub trait PyCDataMethods: PyValue {
     // PyCFuncPtrType_Type
 
     #[pyclassmethod]
-    fn from_param(cls: PyTypeRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<PyCData>;
+    fn from_param(cls: PyTypeRef, value: PyObjectRef, vm: &VirtualMachine)
+        -> PyResult<PyObjectRef>;
 
     #[pyclassmethod]
     fn from_address(
@@ -244,10 +263,12 @@ pub trait BorrowValueMut<'a> {
     fn borrow_value_mut(&'a self) -> PyRwLockWriteGuard<'a, RawBuffer>;
 }
 
-impl<'a> BorrowValue<'a> for PyCData {
-    type Borrowed = PyRwLockReadGuard<'a, RawBuffer>;
+pub trait BorrowValue<'a> {
+    fn borrow_value(&'a self) -> PyRwLockReadGuard<'a, RawBuffer>;
+}
 
-    fn borrow_value(&'a self) -> Self::Borrowed {
+impl<'a> BorrowValue<'a> for PyCData {
+    fn borrow_value(&'a self) -> PyRwLockReadGuard<'a, RawBuffer> {
         self._buffer.read()
     }
 }
@@ -270,7 +291,6 @@ where
     for<'a> T: PyValue + fmt::Debug + BorrowValue<'a> + BorrowValueMut<'a>,
 {
     fn obj_bytes(&self) -> BorrowedValue<[u8]> {
-        // @TODO: This is broken
         PyRwLockReadGuard::map(self.data.borrow_value(), |x| unsafe {
             slice::from_raw_parts(x.inner, x.size)
         })

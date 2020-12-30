@@ -16,7 +16,10 @@ use crate::pyobject::{
 use crate::slots::BufferProtocol;
 use crate::VirtualMachine;
 
-use crate::stdlib::ctypes::basics::{generic_get_buffer, BorrowValueMut, PyCData, RawBuffer};
+use crate::stdlib::ctypes::basics::{
+    generic_get_buffer, BorrowValue as BorrowValueCData, BorrowValueMut, PyCData, PyCDataMethods,
+    RawBuffer,
+};
 use crate::stdlib::ctypes::pointer::PyCPointer;
 use crate::stdlib::ctypes::primitive::PySimpleType;
 
@@ -202,10 +205,8 @@ impl PyValue for PyCArray {
     }
 }
 
-impl<'a> BorrowValue<'a> for PyCArray {
-    type Borrowed = PyRwLockReadGuard<'a, RawBuffer>;
-
-    fn borrow_value(&'a self) -> Self::Borrowed {
+impl<'a> BorrowValueCData<'a> for PyCArray {
+    fn borrow_value(&'a self) -> PyRwLockReadGuard<'a, RawBuffer> {
         self._buffer.read()
     }
 }
@@ -222,6 +223,12 @@ impl BufferProtocol for PyCArray {
     }
 }
 
+// impl PyCDataMethods for PyCArray {
+//     fn from_param(cls: PyTypeRef, value: PyObjectRef, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+
+//     }
+// }
+
 #[pyimpl(flags(BASETYPE), with(BufferProtocol))]
 impl PyCArray {
     #[pyslot]
@@ -234,10 +241,11 @@ impl PyCArray {
                             "The '_length_' attribute must not be negative".to_string(),
                         ))
                     } else {
-                        Ok(usize::try_from_object(vm, length_obj.clone())
-                            .or(Err(vm.new_overflow_error(
+                        Ok(usize::try_from_object(vm, length_obj.clone()).map_err(|_| {
+                            vm.new_overflow_error(
                                 "The '_length_' attribute is too large".to_string(),
-                            )))?)
+                            )
+                        })?)
                     }
                 } else {
                     Err(vm
@@ -381,7 +389,7 @@ impl PyCArray {
     }
 
     #[pyproperty(name = "raw")]
-    pub fn raw(zelf: PyRef<Self>, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    fn raw(zelf: PyRef<Self>, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
         // zelf._type_ == "c"
 
         let obj = zelf.as_object();
@@ -484,9 +492,29 @@ impl PyCArray {
     //     obj: PyObjectRef,
     //     vm: &VirtualMachine,
     // ) -> PyResult<()> {
+    //     let buffer = try_buffer_from_object(vm, zelf.as_object())?;
+    //     let buffer_size = buffer.get_options().len;
+    //     let buffer_bytes = buffer.obj_bytes_mut();
+    //     let offset = buffer_size / zelf.len();
+
     //     match k_or_idx {
     //         Either::A(idx) => {
+    //             if idx < 0 || idx as usize > zelf._length_ {
+    //                 Err(vm.new_index_error("invalid index".to_string()))
+    //             } else {
+    //                 let idx = idx as usize;
+    //                 let type_obj = get_obj(zelf._type_.as_str())
+    //                 if let Some(from_param) = vm.get_method(type_obj.clone(), "from_param"){
+    //                     let cobj = vm.invoke(
+    //                         &from_param?,
+    //                         (type_obj, obj),
+    //                     )?;
+    //                 } else {
 
+    //                 }
+    //                 // buffer_bytes[idx..idx + offset];
+    //                 Ok(())
+    //             }?
     //         },
     //         Either::B(slice) => {
     //             let slice_length = slice_adjust_size(zelf._length_ as isize, &mut start, &mut stop, step) as usize;
